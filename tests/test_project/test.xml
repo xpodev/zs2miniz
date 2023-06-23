@@ -1,0 +1,102 @@
+<zsharp-project zdmp-version="1.0.0" zsharp-version="1.0.0" project-name="Test">
+  <module id="0" name="Test">
+    <class id="1" name="Foo" base="2">
+      <specifications />
+      <fields>
+        <field id="3" name="x" type="class Foo" binding="instance" />
+      </fields>
+      <methods>
+        <method id="4" name="foo" returns="class Foo">
+          <parameters>
+            <parameter id="param-0" name="this" type="class Foo" binding="positional" />
+          </parameters>
+          <body>
+            <instructions>
+              <instruction opcode="load-argument" id="inst-0">
+                <operand name="parameter" id="param-0">this: class Foo</operand>
+              </instruction>
+              <instruction opcode="call" id="inst-1">
+                <operand name="callee" id="4">fun foo(this: class Foo): class Foo {}</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-2" />
+              <instruction opcode="create-instance" id="inst-3">
+                <operand name="constructor">fun Goo(this: any): any {}</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-4" />
+              <instruction opcode="create-instance" id="inst-5">
+                <operand name="constructor">fun Baz(this: any): any {}</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-6" />
+              <instruction opcode="create-instance" id="inst-7">
+                <operand name="constructor">fun Foo(this: class Foo): class Foo {}</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-8" />
+              <instruction opcode="create-instance" id="inst-9">
+                <operand name="constructor">fun Bar(this: any): any {}</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-10" />
+            </instructions>
+          </body>
+        </method>
+      </methods>
+      <constructors>
+        <method id="5" name="Foo" returns="class Foo">
+          <parameters>
+            <parameter id="param-0" name="this" type="class Foo" binding="positional" />
+          </parameters>
+          <body>
+            <instructions>
+              <instruction opcode="load-argument" id="inst-0">
+                <operand name="parameter" id="param-0">this: class Foo</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-1" />
+            </instructions>
+          </body>
+        </method>
+      </constructors>
+    </class>
+    <class id="6" name="Baz" base="7">
+      <specifications />
+      <fields />
+      <methods />
+      <constructors>
+        <method id="8" name="Baz" returns="any">
+          <parameters>
+            <parameter id="param-0" name="this" type="any" binding="positional" />
+          </parameters>
+          <body>
+            <instructions />
+          </body>
+        </method>
+      </constructors>
+    </class>
+    <class id="7" name="Goo" base="1">
+      <specifications />
+      <fields />
+      <methods />
+      <constructors>
+        <method id="9" name="Goo" returns="any">
+          <parameters>
+            <parameter id="param-0" name="this" type="any" binding="positional" />
+          </parameters>
+          <body>
+            <instructions>
+              <instruction opcode="load-argument" id="inst-0">
+                <operand name="parameter" id="param-0">this: any</operand>
+              </instruction>
+              <instruction opcode="return" id="inst-1" />
+            </instructions>
+          </body>
+        </method>
+      </constructors>
+    </class>
+    <function id="10" name="foo" returns="class Foo">
+      <parameters>
+        <parameter id="param-0" name="goo" type="class Goo" binding="positional" />
+      </parameters>
+      <body>
+        <instructions />
+      </body>
+    </function>
+  </module>
+</zsharp-project>

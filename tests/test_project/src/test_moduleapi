@@ -1,0 +1,26 @@
+api Standard /* : module // must be implemented as a module */ {
+    api FileSystem {
+
+    }
+
+    module Collections {
+        class List(T: type) {
+
+        }
+    }
+}
+
+// any namespace item? not only module?
+module dotNET implements Standard {
+    module FileSystem {}
+
+    module Collections {
+        class List(T: type) {
+            // ...
+        }
+    }
+}
+
+fun(s: Standard): Standard.Collection.List{i32} {
+  return s.Collections.List{i32};
+}(dotNET);
