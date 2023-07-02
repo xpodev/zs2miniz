@@ -27,6 +27,7 @@ class TokenType(str, Enum):
     NewLine = f"{TokenCategory.WS}.EOL"
     Tab = f"{TokenCategory.WS}.Tab"
     LineComment = f"{TokenCategory.WS}.LineComment"
+    BlockComment = f"{TokenCategory.WS}.BlockComment"
 
     EOF = f"{TokenCategory.Misc}.EOF"
     Unknown = f"{TokenCategory.Misc}.Unknown"
