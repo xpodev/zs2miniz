@@ -353,15 +353,15 @@ def parse_function(parser: Parser) -> Function:
         if parser.token('*') or parser.token('**'):
             break
 
-        if parser.token('{'):
+        if parser.token('{', eat=True):
             while not parser.token('}'):
                 named_parameters.append(parse_parameter(parser))
 
                 if not parser.token(TokenType.Comma, eat=True):
                     break
             parser.eat('}')
-
-        positional_parameters.append(parse_parameter(parser))
+        else:
+            positional_parameters.append(parse_parameter(parser))
 
         if not parser.token(TokenType.Comma, eat=True):
             break
@@ -589,16 +589,29 @@ def parse_function_call(parser: Parser, left: Expression) -> FunctionCall:
     _left_parenthesis = parser.eat('(')
 
     arguments = []
+    keyword_arguments = {}
 
     while not parser.token(')'):
-        arguments.append(parser.next("Expression"))
+        if parser.token(TokenType.Identifier):
+            expr = parser.eat(TokenType.Identifier)
+            if parser.token(':', eat=True):
+                name: str = expr.value
+                expr = parser.next("Expression")
+                assert isinstance(expr, Expression)
+                keyword_arguments[name] = expr
+                continue
+            else:
+                expr = Identifier(expr)
+        else:
+            expr = parser.next("Expression")
+        arguments.append(expr)
 
         if not parser.token(',', eat=True):
             break
 
     _right_parenthesis = parser.eat(')')
 
-    return FunctionCall(left, _left_parenthesis, arguments, _right_parenthesis)
+    return FunctionCall(left, _left_parenthesis, arguments, keyword_arguments, _right_parenthesis)
 
 
 def parse_partial_call(parser: Parser, left: Expression) -> FunctionCall:
@@ -905,7 +918,7 @@ def _get_function_body_parser(state: State):
 
 def get_parser(state: State):
     document = DocumentParser(state)
-    parser = Parser(document, state=state)
+    parser = Parser(state, document)
 
     document.add_parsers(
         parse_if,

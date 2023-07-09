@@ -234,12 +234,13 @@ class FunctionCall(Expression[token_info.FunctionCall]):
             callable_: Expression,
             _left_parenthesis: Token,
             arguments: list[Expression],
+            keyword_arguments: dict[str, Expression],
             _right_parenthesis: Token
     ):
         super().__init__(token_info.FunctionCall(_left_parenthesis, _right_parenthesis))
         self.callable = callable_
         self.arguments = arguments
-        self.keyword_arguments = {}
+        self.keyword_arguments = keyword_arguments
         if _left_parenthesis == '(' and _right_parenthesis == ')':
             self.operator = "()"
         elif _left_parenthesis == '{' and _right_parenthesis == '}':
