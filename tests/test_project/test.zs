@@ -19,13 +19,13 @@ module Test {
 
         fun foo(this: Foo, {other: Bar}): bool { return true; }
 
-        fun foo(this: Foo, other: Bar, other2: Foo): Foo {
-            return foo(this);
+        fun foo(this: Foo, other: Bar, other2: Foo): bool {
+            //return foo(this);
             return foo(this, other: Bar());
-            return Goo();
+            /*return Goo();
             return Baz();
             return Foo();
-            return Bar();
+            return Bar();*/
         }
     }
 

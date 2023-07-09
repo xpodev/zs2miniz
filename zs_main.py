@@ -5,15 +5,11 @@ from pathlib import Path
 from dotnet import DotNETCompiler, DotNETContext
 from miniz.concrete.module import Module
 from zs.std.importers import ZSImporter, ModuleImporter
-from zs.zs2miniz.toolchain import Toolchain
 from zs.zs_compiler import ZSCompiler
 
 from zs.cli.options import Options, get_options, InitOptions
-from zs.processing import State
 
-from zs.std.modules.module_core import core
-from zs.std.modules.module_filesystem import filesystem
-from zs.std.modules.module_srf import srf
+from zs.modules.module_core import module as core
 
 from zs.std.parsers import base as base_language
 
@@ -28,29 +24,22 @@ def main(options: Options):
     import System
     assembly = mc.AssemblyDefinition.CreateAssembly(mc.AssemblyNameDefinition(project_name, System.Version("1.0.0")), project_name, mc.ModuleKind.Dll)
 
-    state = State()
-
-    parser = base_language.get_parser(state)
-
-    parser.setup()
-
-    compiler = ZSCompiler(state=state, parser=parser)
-    context = compiler.toolchain.context
-
-    compiler.import_system.add_directory(Path(options.source).parent)
-
-    compiler.import_system.add_importer(ZSImporter(compiler.import_system), ".zs")
-    compiler.import_system.add_importer(ModuleImporter(compiler), "module")
-
     dotnet_compiler = DotNETCompiler(DotNETContext.standard(assembly.MainModule.TypeSystem))
 
-    # import_system.add_importer(ZSImporter(import_system, compiler), ".zs")
-    # import_system.add_importer(ModuleImporter(compiler), "module")
-    # import_system.add_importer(DotNETImporter(dotnet_compiler), "dotnet")
+    compiler = ZSCompiler(parser=base_language.get_parser)
+    context = compiler.context
+    state = compiler.state
 
-    context.add_module_to_cache("core", core)
-    context.add_module_to_cache("srf", srf)
-    context.add_module_to_cache("filesystem", filesystem)
+    compiler.toolchain.parser.setup()
+
+    context.import_system.add_directory(Path(options.source).parent)
+
+    context.import_system.add_importer(ZSImporter(compiler.context.import_system), ".zs")
+    context.import_system.add_importer(ModuleImporter(compiler), "module")
+
+    context.add_module("core", core)
+    # context.add_module("srf", srf)
+    # context.add_module("filesystem", filesystem)
 
     try:
         result = compiler.import_document(options.source)
