@@ -9,7 +9,7 @@ import { Void, Boolean as bool } from "module:core";
 
 module Test {
     class Foo {
-        class Bar < Foo  { fun new(this): Bar { return this; } }
+        class Bar < Foo  { fun new(this: Bar): Bar { return this.x; } }
 
         fun new(this: Foo): Foo { return this; }
 
