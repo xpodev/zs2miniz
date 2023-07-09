@@ -60,12 +60,6 @@ class ResolvedClass(ResolvedExpression[Class]):
         return f"ResolvedClass {self.name or '{Anonymous}'}"
 
 
-class ResolvedClassCall(ResolvedExpression[FunctionCall]):
-    callable: "ResolvedClass"
-    arguments: list[ResolvedExpression]
-    keyword_arguments: dict[str, ResolvedExpression]
-
-
 class ResolvedExpressionStatement(ResolvedNode[ExpressionStatement]):
     expression: ResolvedExpression
 

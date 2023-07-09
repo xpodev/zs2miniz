@@ -460,24 +460,6 @@ class CodeCompiler(_SubCompiler):
         return [vm.LoadObject(cls)]
 
     @_cpl
-    def _(self, node: resolved.ResolvedClassCall):
-        result = []
-
-        for arg in node.arguments:
-            result.extend(self.compile(arg))
-        # todo: named args
-        # todo: find suitable constructor
-        cls = self.compiler.compile(node.callable)
-        assert isinstance(cls, Class)
-        args = self._stack.top(len(node.arguments))
-        constructors = cls.constructor.get_match(args, [], strict=True)
-        if not constructors:
-            constructors = cls.constructor.get_match(args, [])
-        if len(constructors) != 1:
-            raise ValueError
-        return [*result, vm.CreateInstance(constructors[0])]
-
-    @_cpl
     def _(self, node: resolved.ResolvedFunctionCall):
         result = []
 
