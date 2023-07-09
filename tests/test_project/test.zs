@@ -1,5 +1,5 @@
 import { hello } from "test2.zs";
-import { a } from hello();
+import { a, A } from hello();
 
 import { Void, Boolean as bool } from "module:core";
 
@@ -11,7 +11,7 @@ module Test {
     class Foo {
         class Bar < Foo  { fun new(this: Bar): Bar { return this.x; } }
 
-        fun new(this: Foo): Foo { return this; }
+        fun new(this: Foo): A.blah(Foo) { return this; }
 
         fun new(this, x): hello(Void) {}
 
@@ -34,7 +34,7 @@ module Test {
     }
 
     class Goo < Foo {
-        fun new(this) { return this; }
+        fun new(this): A.blah(bool) { return true; }
     }
 
     fun foo(goo: Foo): Void { }

@@ -473,7 +473,7 @@ class CodeCompiler(_SubCompiler):
 
         fact = vm.Call
 
-        group = self.compiler.compile(node.callable)
+        group = self.compiler.compile(resolved.Evaluate(node.callable) if isinstance(node.callable, resolved.ResolvedExpression) else node.callable)
         if isinstance(group, IClass):
             self.stack.push_type(group)
 
@@ -539,9 +539,8 @@ class CodeCompiler(_SubCompiler):
 
         member = tp.get_name(node.member_name)
 
-        assert isinstance(tp, ImplementsType)
-
         if isinstance(member, IOOPMember):
+            assert isinstance(tp, ImplementsType)
             match member.binding:
                 case Binding.Instance:
                     if not assignable_to(tp, member.owner):
@@ -554,15 +553,23 @@ class CodeCompiler(_SubCompiler):
                     if assignable_to(tp, member.owner):
                         result = [vm.LoadObject(tp.runtime_type)]
                     self.stack.pop()
+            match member:
+                case IField() as field:
+                    self.stack.push_field(field)
+                    return [*result, vm.LoadField(field)]
+                case IMethod() as method:
+                    """
+                    Push 'this' if available, call a bound method constructor. otherwise, return the overloads normally
+                    """
+                    raise NotImplementedError
+
         match member:
-            case IField() as field:
-                self.stack.push_field(field)
-                return [*result, vm.LoadField(field)]
-            case IMethod() as method:
-                """
-                Push 'this' if available, call a bound method constructor. otherwise, return the overloads normally
-                """
-                raise NotImplementedError
+            case IFunction():
+                return [vm.LoadObject(member)]
+            case OverloadGroup():
+                return [vm.LoadObject(member)]
+
+        raise TypeError(type(member))
 
     @_cpl
     def _(self, node: resolved.ResolvedObject):
@@ -579,6 +586,12 @@ class CodeCompiler(_SubCompiler):
 
 
 class TopLevelCompiler(_SubCompiler):
+    _code_compiler: "TopLevelCodeCompiler"
+
+    def __init__(self, compiler: "NodeCompiler"):
+        super().__init__(compiler)
+        self._code_compiler = TopLevelCodeCompiler(compiler)
+
     @singledispatchmethod
     def _compile(self, node: resolved.ResolvedNode):
         return super()._compile(node)
@@ -587,12 +600,13 @@ class TopLevelCompiler(_SubCompiler):
 
     @_cpl
     def _(self, node: resolved.Evaluate) -> IMiniZObject | ObjectProtocol | _T:
-        with self.compiler.code_compiler.code_context(TopLevelCodeCompiler(self.compiler)):
+        with self.compiler.code_compiler.code_context(self._code_compiler):
             ctx = self.compiler.vm.run(self.compiler.code_compiler.compile_code([node.value]))
             if isinstance(node.value, resolved.ResolvedExpression):
                 value = ctx.pop()
-                if not assignable_to(value.runtime_type, self.compiler.code_compiler.stack.pop()):
-                    raise TypeError
+                self.compiler.code_compiler.stack.pop()
+                # if not assignable_to(value.runtime_type, self.compiler.code_compiler.stack.pop()):
+                #     raise TypeError
                 return value
 
     @_cpl
@@ -617,6 +631,11 @@ class TopLevelCompiler(_SubCompiler):
                     self.compiler.function_compiler.compile()
 
         return result
+
+    @_cpl
+    def _(self, node: resolved.ResolvedExpression):
+        with self.compiler.code_compiler.code_context(self._code_compiler):
+            return self.compiler.code_compiler.compile(node)
 
     @_cpl
     @_cached
