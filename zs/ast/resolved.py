@@ -3,7 +3,7 @@ from typing import Generic, TypeVar, TYPE_CHECKING
 if TYPE_CHECKING:
     from miniz.type_system import ObjectProtocol
 from zs.ast.node import Node
-from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier
+from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier, MemberAccess
 
 _T = TypeVar("_T", bound=Node)
 
@@ -120,6 +120,14 @@ class ResolvedImport(ResolvedNode[Import]):
 
     def import_name(self, node: Identifier | Alias, name: str):
         return (self.imported_names.append(imported := self.ImportedName(node, name, self)), imported)[1]
+
+
+class ResolvedMemberAccess(ResolvedExpression[MemberAccess]):
+    object: ResolvedExpression
+
+    @property
+    def member_name(self):
+        return self.node.member.name
 
 
 class ResolvedModule(ResolvedNode[Module]):
