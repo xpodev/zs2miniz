@@ -13,10 +13,10 @@ from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
 from miniz.core import ImplementsType, ObjectProtocol
 from miniz.generic.signature import GenericParameter
-from miniz.interfaces.base import IMiniZObject
+from miniz.interfaces.base import IMiniZObject, ScopeProtocol
 from miniz.interfaces.function import IFunction, IFunctionSignature
 from miniz.interfaces.module import IModule
-from miniz.interfaces.oop import IClass
+from miniz.interfaces.oop import IClass, IField, Binding, IOOPMember, IMethod, IInterface, ITypeclass, IStructure
 from miniz.interfaces.signature import IParameter
 from miniz.type_system import Any, is_type, assignable_to, Void, String
 from miniz.vm import instructions as vm
@@ -288,6 +288,17 @@ class FunctionBodyCompiler(ContextualCompiler[FunctionBody]):
 
 class ClassCompiler(ContextualCompiler[Class]):
     def compile_current_context_item(self, node: resolved.ResolvedClass):
+        bases = list(map(self.compiler.compile, node.bases))
+
+        if bases:
+            if isinstance(bases[0], IClass):
+                self.current_context_item.base = bases.pop(0)
+
+            for base in bases:
+                if not isinstance(base, (IInterface, ITypeclass, IStructure)):
+                    raise TypeError
+                self.current_context_item.specifications.append(base)
+
         for item in node.items:
             self.compile(item)
 
@@ -298,17 +309,18 @@ class ClassCompiler(ContextualCompiler[Class]):
     _cpl = _compile.register
 
     @_cpl
-    # @_cached
     def _(self, node: resolved.ResolvedClass):
-        cls = self.compiler.top_level_compiler.compile(node)
-        self.current_context_item.nested_definitions.append(cls)
-        return cls
+        current = self.current_context_item
+        with self.compiler.class_compiler.context_item(Class(node.name), node) as result:
+            self.compiler.class_compiler.compile()
+        current.nested_definitions.append(result)
+        return result
 
     @_cpl
     @_cached
     def _(self, node: resolved.ResolvedFunction):
         with self.compiler.function_compiler.context_item(Method(node.name), node) as result:
-            self.compiler.function_compiler.compile()
+            # self.compiler.function_compiler.compile()
             if result.name == "new":
                 self.current_context_item.constructors.append(result)
             else:
@@ -317,7 +329,7 @@ class ClassCompiler(ContextualCompiler[Class]):
         return result
 
     @_cpl
-    # @_cached
+    @_cached
     def _(self, node: resolved.ResolvedOverloadGroup):
         group = OverloadGroup(node.name, self.compiler.compile(node.parent) if node.parent else None)
         for overload in node.overloads:
@@ -333,16 +345,6 @@ class ClassCompiler(ContextualCompiler[Class]):
         self.current_context_item.fields.append(field)
 
         return field
-
-    # @_cpl
-    # def _(self, node: ResolvedFunction):
-    #     fn = self.compiler.compile(node, factory=Method)
-    #     assert isinstance(fn, Method)
-    #     if fn.name == "new":
-    #         self.current_context_item.constructors.append(fn)
-    #     else:
-    #         self.current_context_item.methods.append(fn)
-    #     return fn
 
 
 class CodeCompiler(_SubCompiler):
@@ -362,11 +364,17 @@ class CodeCompiler(_SubCompiler):
         def _pop(self):
             return self._stack.pop()
 
+        def push_type(self, tp: ImplementsType):
+            self._push(tp)
+
         def push_object(self, obj: ObjectProtocol):
             self._push(obj.runtime_type)
 
         def push_argument(self, p: IParameter):
             self._push(p.parameter_type)
+
+        def push_field(self, f: IField):
+            self._push(f.field_type)
 
         def apply_function(self, fn: IFunctionSignature):
             if len(self._stack) < len(fn.parameters):
@@ -465,6 +473,10 @@ class CodeCompiler(_SubCompiler):
 
         fact = vm.Call
 
+        group = self.compiler.compile(node.callable)
+        if isinstance(group, IClass):
+            self.stack.push_type(group)
+
         for arg in node.arguments:
             result.extend(self.compile(arg))
 
@@ -478,7 +490,6 @@ class CodeCompiler(_SubCompiler):
             kwargs[name] = code
             kwarg_types.append((name, self.stack.top()[0]))
 
-        group = self.compiler.compile(node.callable)
         if isinstance(group, IClass):
             args.insert(0, group)
             group = group.constructor
@@ -513,12 +524,45 @@ class CodeCompiler(_SubCompiler):
         return self.current_code_context.compile(node)
 
     @_cpl
-    # @_cached
     def _(self, node: resolved.ResolvedImport.ImportedName):
         imported = self.cache(node)
         self.stack.push_object(imported)
         return [vm.LoadObject(imported)]
-        # raise RuntimeError(f"This method should not be invoked.")
+
+    @_cpl
+    def _(self, node: resolved.ResolvedMemberAccess):
+        result = self.compile(node.object)
+
+        tp = self.stack.top()[0]
+
+        assert isinstance(tp, ScopeProtocol)
+
+        member = tp.get_name(node.member_name)
+
+        assert isinstance(tp, ImplementsType)
+
+        if isinstance(member, IOOPMember):
+            match member.binding:
+                case Binding.Instance:
+                    if not assignable_to(tp, member.owner):
+                        raise TypeError
+                    self.stack.pop()
+                case Binding.Static:
+                    result = []
+                    self.stack.pop()
+                case Binding.Class:
+                    if assignable_to(tp, member.owner):
+                        result = [vm.LoadObject(tp.runtime_type)]
+                    self.stack.pop()
+        match member:
+            case IField() as field:
+                self.stack.push_field(field)
+                return [*result, vm.LoadField(field)]
+            case IMethod() as method:
+                """
+                Push 'this' if available, call a bound method constructor. otherwise, return the overloads normally
+                """
+                raise NotImplementedError
 
     @_cpl
     def _(self, node: resolved.ResolvedObject):
@@ -556,6 +600,21 @@ class TopLevelCompiler(_SubCompiler):
     def _(self, node: resolved.ResolvedClass):
         with self.compiler.class_compiler.context_item(Class(node.name), node) as result:
             self.compiler.class_compiler.compile()
+
+            nodes = []
+
+            def _recurse(_node: resolved.ResolvedClass):
+                for _item in _node.items:
+                    if isinstance(_item, resolved.ResolvedClass):
+                        _recurse(_item)
+                    elif isinstance(_item, resolved.ResolvedFunction):
+                        nodes.append((_item, self.cache(_item)))
+
+            _recurse(node)
+
+            for node, item in nodes:
+                with self.compiler.function_compiler.context_item(item, node):
+                    self.compiler.function_compiler.compile()
 
         return result
 

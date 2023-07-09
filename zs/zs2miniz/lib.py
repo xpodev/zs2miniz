@@ -2,8 +2,8 @@ import typing
 from pathlib import Path
 from typing import TypeVar
 
-from miniz.interfaces.base import IMiniZObject
-from miniz.type_system import ObjectProtocol
+if typing.TYPE_CHECKING:
+    from miniz.type_system import ObjectProtocol
 from zs.ast.node import Node
 from zs.ast.resolved import ResolvedNode
 from zs.text.token import Token
@@ -95,14 +95,14 @@ class Scope(typing.Generic[_T]):
 
 class DocumentContext:
     _info: DocumentInfo
-    _scope: Scope[ObjectProtocol]
+    _scope: Scope["ObjectProtocol"]
     _tokens: list[Token] | None
     _nodes: list[Node] | None
     _resolved: list[ResolvedNode] | None
     _build: list[list[ResolvedNode]] | None
-    _objects: list[ObjectProtocol] | None
+    _objects: list["ObjectProtocol"] | None
 
-    def __init__(self, info: DocumentInfo, global_scope: Scope[ObjectProtocol] | None = None):
+    def __init__(self, info: DocumentInfo, global_scope: Scope["ObjectProtocol"] | None = None):
         self._info = info
         self._scope = Scope(global_scope)
         self._tokens = self._nodes = self._resolved = self._build = self._objects = None
@@ -157,7 +157,7 @@ class DocumentContext:
 
 
 class CompilationContext:
-    _scope: Scope[ObjectProtocol]
+    _scope: Scope["ObjectProtocol"]
     _modules: dict[str, "Module"]
     _documents: dict[str, DocumentContext]
     _import_system: ImportSystem
@@ -225,5 +225,5 @@ class GlobalContext(CompilationContext):
     def del_global(self, name: str):
         self.scope.delete_name(name, recursive_lookup=False, must_exist=True)
 
-    def set_global(self, name: str, value: ObjectProtocol):
+    def set_global(self, name: str, value: "ObjectProtocol"):
         self.scope.create_name(name, value)

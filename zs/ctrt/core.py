@@ -7,7 +7,8 @@ from typing import Optional
 
 from . import get_runtime
 from .errors import NameNotFoundError, NameAlreadyExistsError, ReturnInstructionInvoked
-from .protocols import ClassProtocol, TypeProtocol, ObjectProtocol, SetterProtocol, GetterProtocol, BindProtocol, CallableTypeProtocol, ScopeProtocol, CallableProtocol
+from .protocols import ClassProtocol, TypeProtocol, ObjectProtocol, SetterProtocol, GetterProtocol, BindProtocol, CallableTypeProtocol, CallableProtocol
+from miniz.interfaces.base import ScopeProtocol
 from ..utils import SingletonMeta
 
 __all__ = [

@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from zs.ctrt.protocols import ScopeProtocol
+from miniz.interfaces.base import ScopeProtocol
 
 
 class Importer:

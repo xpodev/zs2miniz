@@ -2,6 +2,7 @@
 This file contains different protocols for the Python backend of Z# objects.
 
 """
+from miniz.interfaces.base import ScopeProtocol
 
 
 class ObjectProtocol:
@@ -68,47 +69,6 @@ class SetterProtocol:
         Set the value associated with this setter to the given value.
 
         This method is responsible for typechecking as well.
-        """
-
-
-class ScopeProtocol:
-    """
-    Represents a scope
-    """
-
-    def get_name(self, name: str, **_) -> ObjectProtocol:
-        """
-        Returns the value associated with the given `name` in this scope.
-
-        :raises NameNotFoundError: if the given name could not be found.
-        """
-
-    def all(self) -> list[tuple[str, ObjectProtocol]]:
-        """
-        Returns a list of pairs of (name, value) of all values defined in this scope.
-        """
-
-    def define(self, name: str, value: ObjectProtocol, type: TypeProtocol = None):
-        """
-        Define a new value in this scope.
-        """
-
-    def refer(self, name: str, value: ObjectProtocol, type: TypeProtocol = None):
-        """
-        Bind a name to a value from an external source in this scope.
-        """
-
-    def delete(self, name: str):
-        """
-        Delete a value bound to the given `name` in this scope.
-
-        :raises NameNotFoundError: if the name could not be found.
-        :raises TypeError: if this scope does not support deleting items.
-        """
-
-    def on_exit(self):
-        """
-        Called when the scope object is exited (i.e. end of scope)
         """
 
 

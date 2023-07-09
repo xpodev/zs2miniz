@@ -8,7 +8,8 @@ from zs.ctrt.core import Null, Unit, Any, Function, OverloadGroup, Object, Varia
 from zs.ctrt.errors import ReturnInstructionInvoked, NameNotFoundError, BreakInstructionInvoked, ContinueInstructionInvoked, UnknownMemberError
 # from zs.ctrt.objects import Frame, Function, Scope, Class, FunctionGroup, Variable, TypeClass, TypeClassImplementation
 from zs.ctrt.native import Boolean, Int64, Float64, String, Character
-from zs.ctrt.protocols import ObjectProtocol, CallableProtocol, GetterProtocol, TypeProtocol, BindProtocol, SetterProtocol, ScopeProtocol
+from zs.ctrt.protocols import ObjectProtocol, CallableProtocol, GetterProtocol, TypeProtocol, BindProtocol, SetterProtocol
+from miniz.interfaces.base import ScopeProtocol
 from zs.processing import StatefulProcessor, State
 from zs.std.processing.import_system import ImportSystem
 from zs.text.token import TokenType
