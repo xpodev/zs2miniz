@@ -1,7 +1,7 @@
 import { hello } from "test2.zs";
 import { a, A } from hello();
 
-import { Void, Boolean as bool } from "module:core";
+import { Void, Boolean as bool } from hello("module:core");
 
 // fun _(): print("hello") {}
 
