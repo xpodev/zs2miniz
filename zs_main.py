@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotnet import DotNETCompiler, DotNETContext
 from miniz.concrete.module import Module
+from zs.std.importers import ZSImporter, ModuleImporter
 from zs.zs2miniz.toolchain import Toolchain
 from zs.zs_compiler import ZSCompiler
 
@@ -33,11 +34,13 @@ def main(options: Options):
 
     parser.setup()
 
-    compiler = ZSCompiler(toolchain=Toolchain(state=state, parser=parser))
+    compiler = ZSCompiler(state=state, parser=parser)
     context = compiler.toolchain.context
-    # import_system = compiler.toolchain.interpreter.import_system
 
-    # import_system.add_directory(Path(options.source).parent.resolve())
+    compiler.import_system.add_directory(Path(options.source).parent)
+
+    compiler.import_system.add_importer(ZSImporter(compiler.import_system), ".zs")
+    compiler.import_system.add_importer(ModuleImporter(compiler), "module")
 
     dotnet_compiler = DotNETCompiler(DotNETContext.standard(assembly.MainModule.TypeSystem))
 
@@ -54,24 +57,17 @@ def main(options: Options):
     except Exception as e:
         raise e
     else:
-        module = result.scope.lookup_name(project_name).get()
+        module = result.scope.lookup_name(project_name)
         if not isinstance(module, Module):
             raise TypeError
 
         dotnet_compiler.compile_module(module, assembly.MainModule)
         assembly.Write(module.name + ".dll")
-        # for module in compiler.context.modules:
-        #     if module.entry_point:
-        #         print("Module:", module.name, " | Entry:", module.entry_point)
-        #     else:
-        #         print("Module:", module.name)
-        #     for name, member in module.members.items:
-        #         print('\t', name, " :: ", member)
     finally:
         state.reset()
 
         for message in state.messages:
-            print(f"[{message.processor.__class__.__name__}] [{message.field_type.value}] {message.origin} -> {message.content}")
+            print(f"[{message.processor.__class__.__name__}] [{message.type.value}] {message.origin} -> {message.content}")
 
 
 if __name__ == '__main__':

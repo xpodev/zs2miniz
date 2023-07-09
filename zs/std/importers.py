@@ -3,17 +3,18 @@ from typing import Iterable
 
 from zs.ctrt.core import Scope
 from zs.ctrt.protocols import ObjectProtocol, ScopeProtocol, TypeProtocol
-from zs.std.processing.import_system import Importer, ImportSystem
+from zs.zs2miniz.import_system import Importer, ImportSystem
+from zs.zs2miniz.lib import DocumentContext
 
 
 class ZSImportResult(ScopeProtocol):
-    _scope: Scope
+    _document: DocumentContext
     _items: dict[str, tuple[TypeProtocol, ObjectProtocol]]
 
-    def __init__(self, scope: Scope):
+    def __init__(self, document: DocumentContext):
         super().__init__()
-        self._scope = scope
-        self._items = dict(scope.members)
+        self._document = document
+        self._items = dict(document.scope)
 
     def all(self) -> Iterable[tuple[str, tuple[TypeProtocol, ObjectProtocol]]]:
         for name, item in self._items.items():
@@ -26,10 +27,9 @@ class ZSImportResult(ScopeProtocol):
 class ZSImporter(Importer):
     _import_system: ImportSystem
 
-    def __init__(self, import_system: ImportSystem, compiler):
+    def __init__(self, import_system: ImportSystem):
         super().__init__()
         self._import_system = import_system
-        self._compiler = compiler
 
     def import_from(self, source: str) -> ScopeProtocol | None:
         return self.import_file(Path(source))
@@ -38,9 +38,12 @@ class ZSImporter(Importer):
         path = self._import_system.resolve(path)
 
         if path is None:
-            return None
+            return self._import_system.state.error(f"Could not find file \'{path}\'")
 
-        document: Scope = self._compiler.compile(path)
+        if self._import_system.compiler.toolchain.context.get_document_context(path, default=None) is not None:
+            return self._import_system.state.error(f"Document \'{path}\' was already imported")
+
+        document = self._import_system.compiler.import_document(path)
 
         return ZSImportResult(document)
 
@@ -50,4 +53,4 @@ class ModuleImporter(Importer):
         self._compiler = compiler
 
     def import_from(self, source: str) -> ScopeProtocol | None:
-        return self._compiler.context.get_module_from_cache(source)
+        return self._compiler.context.get_module(source)

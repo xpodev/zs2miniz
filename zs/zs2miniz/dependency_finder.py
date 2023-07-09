@@ -1,6 +1,6 @@
 from functools import singledispatchmethod
 
-from zs.ast.resolved import ResolvedNode, ResolvedModule, ResolvedClass, ResolvedFunction, ResolvedParameter
+from zs.ast.resolved import ResolvedNode, ResolvedModule, ResolvedClass, ResolvedFunction, ResolvedParameter, ResolvedOverloadGroup, ResolvedObject
 from zs.processing import StatefulProcessor, State
 
 
@@ -16,6 +16,7 @@ class DependencyFinder(StatefulProcessor):
 
     @singledispatchmethod
     def _flatten_tree(self, node: ResolvedNode):
+        return []
         raise NotImplementedError(f"Can't flatten node of type \'{type(node)}\' because it is not implemented yet")
 
     _flt = _flatten_tree.register
@@ -30,12 +31,20 @@ class DependencyFinder(StatefulProcessor):
 
     @_flt
     def _(self, node: ResolvedFunction):
-        result = [*node.positional_parameters, *node.named_parameters]
-        if node.variadic_positional_parameter:
-            result.append(node.variadic_positional_parameter)
-        if node.variadic_named_parameter:
-            result.append(node.variadic_named_parameter)
-        return result
+        # result = [*node.positional_parameters, *node.named_parameters]
+        # if node.variadic_positional_parameter:
+        #     result.append(node.variadic_positional_parameter)
+        # if node.variadic_named_parameter:
+        #     result.append(node.variadic_named_parameter)
+        return []
+
+    @_flt
+    def _(self, node: ResolvedOverloadGroup):
+        return sum((self.flatten_tree(fn) for fn in node.overloads), [])
+
+    @_flt
+    def _(self, _: ResolvedObject):
+        return []
 
     def find_dependencies(self, node: ResolvedNode) -> list[ResolvedNode]:
         if node is None:
@@ -50,6 +59,7 @@ class DependencyFinder(StatefulProcessor):
 
     @singledispatchmethod
     def _find_dependencies(self, node: ResolvedNode) -> list[ResolvedNode]:
+        return []
         raise NotImplementedError(f"Can't find dependencies for node of type \'{type(node)}\' because it is not implemented yet")
 
     _dep = _find_dependencies.register
@@ -72,8 +82,16 @@ class DependencyFinder(StatefulProcessor):
         ]
 
     @_dep
+    def _(self, node: ResolvedOverloadGroup):
+        return sum((self.find_dependencies(fn) for fn in node.overloads), [])
+
+    @_dep
     def _(self, node: ResolvedParameter):
         return [
             *self.find_dependencies(node.type),
             *self.find_dependencies(node.initializer)
         ]
+
+    @_dep
+    def _(self, _: ResolvedObject):
+        return []

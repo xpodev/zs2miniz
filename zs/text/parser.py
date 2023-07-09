@@ -165,8 +165,8 @@ class ContextualParser(StatefulProcessor, Generic[_T]):
         )
         if sub is None:
             sub = self._on_unknown_token(token)
-        if sub is None:
-            self.state.error(f"Could not parse token: {token}", token)
+        # if sub is None:
+        #     self.state.error(f"Could not parse token: {token}", token)
         return sub
 
     def _on_unknown_token(self, token: Token):
@@ -174,7 +174,7 @@ class ContextualParser(StatefulProcessor, Generic[_T]):
             sub = fallback._get_parser_for(token)
             if sub is not None:
                 return sub
-        return self.state.error(f"Could not parse symbol '{token.value}'", token)
+        return #self.state.error(f"Could not parse symbol '{token.value}'", token)
 
 
 class Parser(StatefulProcessor):
@@ -182,8 +182,8 @@ class Parser(StatefulProcessor):
     _parser_stack: list[ContextualParser]
     _stream: TokenStream
 
-    def __init__(self, toplevel_parser: ContextualParser = None, *, state: State = None):
-        super().__init__(state or State())
+    def __init__(self, state: State, toplevel_parser: ContextualParser = None):
+        super().__init__(state)
         self._context_parsers = {}
         if toplevel_parser is not None:
             self._parser_stack = [toplevel_parser]

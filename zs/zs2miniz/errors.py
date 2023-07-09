@@ -14,3 +14,9 @@ class NameAlreadyBoundError(ZSharpError):
     """
     Raised when a name is being defined in a scope in which this name already exists
     """
+
+
+class CompilerNotAvailableError(ZSharpError):
+    """
+    Raised when trying to compile a node in a compiler that does not support compiling said node
+    """

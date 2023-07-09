@@ -55,8 +55,8 @@ class Tokenizer(StatefulProcessor):
     _stream: TextStream | None
     _start: Position
 
-    def __init__(self, *, state: State = None):
-        super().__init__(state or State())
+    def __init__(self, state: State):
+        super().__init__(state)
         self._document = None
         self._start = Position(1, 1)
         self._stream = None
