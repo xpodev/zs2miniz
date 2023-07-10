@@ -104,6 +104,7 @@ class Toolchain(StatefulProcessor):
                     for node in self.execute_document(info, result=ToolchainResult.AST):
                         self.resolver.add_node(node)
                     document.resolved_nodes = self.resolver.resolve()
+                    document.node_scope = self.resolver.context.current_scope
                 return document.resolved_nodes
             case ToolchainResult.BuildOrder:
                 if document.build_order is None:
@@ -118,7 +119,7 @@ class Toolchain(StatefulProcessor):
                 if document.objects is None:
                     document.objects = self.compiler.compile(sum(self.execute_document(info, result=ToolchainResult.BuildOrder), []))
                     for name, item in self.resolver.context.current_scope.defined_names:
-                        document.scope.create_name(name, self.compiler.compile(item))
+                        document.object_scope.create_name(name, self.compiler.compile(item))
                 return document.objects
             case ToolchainResult.DocumentContext:
                 self.execute_document(info, result=ToolchainResult.MiniZObjects)

@@ -46,7 +46,7 @@ def main(options: Options):
     except Exception as e:
         raise e
     else:
-        module = result.scope.lookup_name(project_name)
+        module = result.object_scope.lookup_name(project_name)
         if not isinstance(module, Module):
             raise TypeError
 

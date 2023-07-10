@@ -15,7 +15,7 @@ class ZSImportResult(ScopeProtocol):
     def __init__(self, document: DocumentContext):
         super().__init__()
         self._document = document
-        self._items = dict(document.scope)
+        self._items = dict(document.object_scope)
 
     def all(self) -> Iterable[tuple[str, tuple[TypeProtocol, ObjectProtocol]]]:
         for name, item in self._items.items():

@@ -95,7 +95,8 @@ class Scope(typing.Generic[_T]):
 
 class DocumentContext:
     _info: DocumentInfo
-    _scope: Scope["ObjectProtocol"]
+    _object_scope: Scope["ObjectProtocol"]
+    _node_scope: Scope[ResolvedNode] | None
     _tokens: list[Token] | None
     _nodes: list[Node] | None
     _resolved: list[ResolvedNode] | None
@@ -104,16 +105,24 @@ class DocumentContext:
 
     def __init__(self, info: DocumentInfo, global_scope: Scope["ObjectProtocol"] | None = None):
         self._info = info
-        self._scope = Scope(global_scope)
-        self._tokens = self._nodes = self._resolved = self._build = self._objects = None
+        self._object_scope = Scope(global_scope)
+        self._node_scope = self._tokens = self._nodes = self._resolved = self._build = self._objects = None
 
     @property
     def info(self):
         return self._info
 
     @property
-    def scope(self):
-        return self._scope
+    def object_scope(self):
+        return self._object_scope
+
+    @property
+    def node_scope(self):
+        return self._node_scope
+
+    @node_scope.setter
+    def node_scope(self, value):
+        self._node_scope = value
 
     @property
     def tokens(self):
