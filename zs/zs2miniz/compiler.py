@@ -127,7 +127,10 @@ class ContextualCompiler(_SubCompiler, Generic[_T]):
 class ModuleCompiler(ContextualCompiler[IModule]):
     def compile_current_context_item(self, node: resolved.ResolvedModule):
         for item in node.items:
-            self.compile(item)
+            try:
+                self.compile(item)
+            except NotImplementedError:
+                self.compiler.compile(item)
 
     @singledispatchmethod
     def _compile(self, node: resolved.ResolvedNode):
@@ -495,8 +498,6 @@ class CodeCompiler(_SubCompiler):
             group = group.constructor
             fact = vm.CreateInstance
 
-        # if not isinstance(group, (IFunction, OverloadGroup)):
-        #     group = self.compiler.vm.run(group)
         if isinstance(group, IFunction):
             fn = group
         elif isinstance(group, OverloadGroup):
