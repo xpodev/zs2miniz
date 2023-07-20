@@ -127,8 +127,14 @@ class Tokenizer(StatefulProcessor):
                         comment += c
                     return self._token(TokenType.LineComment, comment)
                 if char == '/' and self._stream.peek() == '*':
+                    level = 1
                     comment = ""
-                    while ((c := self._stream.read(1)) != '*' or self._stream.peek() != '/') and not self._stream.eof():
+                    while level and not self._stream.eof():
+                        c = self._stream.read(1)
+                        if c == '*' and self._stream.peek() == '/':
+                            level -= 1
+                        elif c == '/' and self._stream.peek() == '*':
+                            level += 1
                         comment += c
                     if not self._stream.eof():
                         self._stream.read(1)
