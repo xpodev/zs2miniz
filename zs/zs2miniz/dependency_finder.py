@@ -2,20 +2,6 @@ from contextlib import contextmanager
 from functools import singledispatchmethod
 
 from zs.ast import resolved
-from zs.ast.resolved import (
-    ResolvedNode,
-    ResolvedModule,
-    ResolvedClass,
-    ResolvedFunction,
-    ResolvedParameter,
-    ResolvedOverloadGroup,
-    ResolvedObject,
-    ResolvedMemberAccess,
-    ResolvedExpression,
-    ResolvedImport,
-    ResolvedFunctionCall,
-    ResolvedVar
-)
 from zs.dependency_graph import DependencyGraph
 from zs.processing import StatefulProcessor, State
 
@@ -24,43 +10,41 @@ class DependencyFinder_Old(StatefulProcessor):
     def __init__(self, *, state: State):
         super().__init__(state)
 
-        self._exp = CodeDependencyFinder(self)
-
     # region Flatten
 
-    def flatten_tree(self, node: ResolvedNode) -> list[ResolvedNode]:
+    def flatten_tree(self, node: resolved.ResolvedNode) -> list[resolved.ResolvedNode]:
         return self._flatten_tree(node)
 
     @singledispatchmethod
-    def _flatten_tree(self, node: ResolvedNode):
+    def _flatten_tree(self, node: resolved.ResolvedNode):
         # return []
         raise NotImplementedError(f"Can't flatten node of type \'{type(node)}\' because it is not implemented yet")
 
     _flt = _flatten_tree.register
 
     @_flt
-    def _(self, node: ResolvedImport):
+    def _(self, node: resolved.ResolvedImport):
         return []
 
     @_flt
-    def _(self, node: ResolvedModule):
+    def _(self, node: resolved.ResolvedModule):
         return [
             *node.items,
             *sum(map(self.flatten_tree, node.items), [])
         ]
 
     @_flt
-    def _(self, node: ResolvedClass):
+    def _(self, node: resolved.ResolvedClass):
         return [
             *node.items,
         ]
 
     @_flt
-    def _(self, node: ResolvedMemberAccess):
+    def _(self, node: resolved.ResolvedMemberAccess):
         return []
 
     @_flt
-    def _(self, node: ResolvedFunction):
+    def _(self, node: resolved.ResolvedFunction):
         return [
             *node.positional_parameters,
             *node.named_parameters,
@@ -70,19 +54,15 @@ class DependencyFinder_Old(StatefulProcessor):
         ]
 
     @_flt
-    def _(self, node: ResolvedOverloadGroup):
+    def _(self, node: resolved.ResolvedOverloadGroup):
         return [
             *node.overloads,
             node.parent
         ]
 
     @_flt
-    def _(self, _: ResolvedObject):
+    def _(self, _: resolved.ResolvedObject):
         return []
-
-    @_flt
-    def _(self, node: ResolvedExpression):
-        return self._exp.flatten_tree(node)
 
     # endregion
 
