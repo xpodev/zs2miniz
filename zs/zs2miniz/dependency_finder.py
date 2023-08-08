@@ -415,6 +415,7 @@ class CodeDependencyFinder(DependencyFinder):
         if any(isinstance(node, cls) for cls in {
             resolved.ResolvedClass,
             resolved.ResolvedParameter,
+            resolved.ResolvedImport,
         }):
             result = self.dispatcher.find(node)
             if result is None:
