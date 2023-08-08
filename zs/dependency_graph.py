@@ -31,7 +31,7 @@ class DependencyGraph(Generic[T]):
     def __init__(self):
         self._graph = {}
 
-    def get_dependency_order(self, state: State) -> list[list[T]]:
+    def order_dependencies(self, state: State) -> list[list[T]]:
         visit_status: dict[T, NodeStatus] = {
             item: NodeStatus.NotVisited for item in self._graph
         }
@@ -48,9 +48,6 @@ class DependencyGraph(Generic[T]):
             max_dependency: T = None
 
             for dependency in self._graph[dependant]:
-                # if dependency is dependant:
-                #     raise CircularDependencyException[T](dependency)
-
                 dependency_level = 0
                 try:
                     match visit_status[dependency]:
