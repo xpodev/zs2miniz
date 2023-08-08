@@ -228,6 +228,9 @@ class GlobalContext(CompilationContext):
     This context is shared between all Z# files executing in the current process.
     """
 
+    def __init__(self, compiler: "ZSCompiler"):
+        super().__init__(compiler, isolated=True)
+
     def get_global(self, name: str) -> object:
         return self.scope.lookup_name(name, recursive_lookup=False)
 

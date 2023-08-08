@@ -16,7 +16,7 @@ class ZSCompiler(StatefulProcessor, metaclass=SingletonMeta):
 
     def __init__(self, state: State = None, **toolchain_kwargs):
         super().__init__(state or State())
-        self._global_context = GlobalContext(self, isolated=True)
+        self._global_context = GlobalContext(self)
         self._toolchain = Toolchain(self._state, self, **toolchain_kwargs)
 
     @property
