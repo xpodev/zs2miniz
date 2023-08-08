@@ -37,5 +37,5 @@ module Test {
 
     import { Type as type } from "module:core";
 
-    // fun generic(T: type, { value: T } );
+    fun generic(value: T, { T: type } );
 }
