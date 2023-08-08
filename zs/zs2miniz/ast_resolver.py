@@ -321,7 +321,7 @@ class NodeResolver(_SubProcessor):
             node.variadic_positional_parameter = self.resolve(node.variadic_positional_parameter)
             node.variadic_named_parameter = self.resolve(node.variadic_named_parameter)
             node.return_type = self.resolve(node.return_type)
-            node.body.instructions = list(map(self.resolve, node.body.instructions)) if node.body is not None else None
+            node.body.instructions = list(map(self.resolve, node.body.instructions)) if node.body.instructions is not None else None
 
     @_res
     def _(self, node: resolved.ResolvedFunctionCall):
