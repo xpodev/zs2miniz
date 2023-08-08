@@ -267,7 +267,8 @@ class RuntimeDependencyFinder(DependencyFinder):
 
     @_dep
     def _(self, node: resolved.ResolvedFunctionBody):
-        self.add(node, *sum(map(self.dispatcher.find, node.instructions), []))
+        if node.instructions is not None:
+            self.add(node, *sum(map(self.dispatcher.find, node.instructions), []))
 
     @_dep
     def _(self, node: resolved.ResolvedImport):
