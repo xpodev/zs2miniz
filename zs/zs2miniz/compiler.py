@@ -206,15 +206,21 @@ class ModuleCompiler(CompilerBase[IModule]):
 
 class FunctionCompiler(CompilerBase[IFunction]):
     _function_body_compiler: "FunctionBodyCompiler"
+    _function_signature_compiler: "FunctionSignatureCompiler"
 
     def __init__(self, compiler: "NodeCompiler"):
         super().__init__(compiler)
 
         self._function_body_compiler = FunctionBodyCompiler(compiler)
+        self._function_signature_compiler = FunctionSignatureCompiler(compiler)
 
     @property
     def function_body_compiler(self):
         return self._function_body_compiler
+
+    @property
+    def function_signature_compiler(self):
+        return self._function_signature_compiler
 
     def construct(self, node: resolved.ResolvedFunction) -> Function:
         fn = Function(node.name)
@@ -267,10 +273,11 @@ class FunctionCompiler(CompilerBase[IFunction]):
 
     @_cpl
     def _(self, node: resolved.ResolvedParameter, item: Parameter):
-        if node.type:
-            item.parameter_type = self.compiler.evaluate(node.type)
-        else:
-            item.parameter_type = Any
+        with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
+            if node.type:
+                item.parameter_type = self.compiler.evaluate(node.type)
+            else:
+                item.parameter_type = Any
 
     def create_parameter(self, node: resolved.ResolvedParameter):
         # parameter_type = self.compiler.evaluate(node.type) if node.type else Any
@@ -808,6 +815,50 @@ class FunctionBodyCompiler(CodeContext):
         assert isinstance(parameter, Parameter)
         self.stack.push_argument(parameter)
         return [vm.LoadArgument(parameter)]
+
+    @_cpl
+    def _(self, node: resolved.ResolvedReturn):
+        return [*(self.code_compiler.compile(node.expression) if node.expression else ()), vm.Return()]
+
+
+class FunctionSignatureCompiler(CodeContext):
+    def compile(self, node: resolved.ResolvedNode):
+        return self._compile(node)
+
+    @singledispatchmethod
+    def _compile(self, node: resolved.ResolvedNode):
+        return None
+
+    _cpl = _compile.register
+
+    # @_cpl
+    # def _(self, node: res.ResolvedClassCall):
+    #     result = []
+    #
+    #     for arg in node.arguments:
+    #         result.extend(self.compile(arg))
+    #     # todo: named args
+    #     # todo: find suitable constructor
+    #     cls = self.compiler.compile(node.callable)
+    #     assert isinstance(cls, Class)
+    #     args = self._stack.top(len(node.arguments))
+    #     constructors = cls.constructor.get_match(args, [], strict=True)
+    #     if not constructors:
+    #         constructors = cls.constructor.get_match(args, [])
+    #     if len(constructors) != 1:
+    #         raise ValueError
+    #     return [*result, vm.CreateInstance(constructors[0])]
+
+    # @_cpl
+    # def _(self, node: res.ResolvedFunctionCall):
+    #     return self.compiler.code_compiler.compile(node)
+
+    @_cpl
+    def _(self, node: resolved.ResolvedParameter):
+        parameter = self.context.cache(node)
+        assert isinstance(parameter, Parameter)
+        self.stack.push_type(parameter.parameter_type)
+        return [vm.LoadObject(parameter)]
 
     @_cpl
     def _(self, node: resolved.ResolvedReturn):
