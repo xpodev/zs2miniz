@@ -1,17 +1,13 @@
 import { hello } from "test2.zs";
 import { a, A } from hello();
+import { Void, Boolean as bool, /*Type as type*/ } from hello("module:core");
 
-import { Void, Boolean as bool, Type as type } from hello("module:core");
-
-// fun _(): print("hello") {}
-
-//module Test { fun foo(x: bool) { return hello(x); } class Foo { fun foo(this) {} fun foo(this, that) {} var x: bool; var f: Foo; } }
 
 module Test {
     class Foo {
         class Bar < Foo  { fun new(this: Bar): Bar { return this.x; } }
 
-        fun new(this: Foo): A.blah(Foo) { return this; }
+        fun new(this: Foo): Foo { return this; }
 
         fun new(this, x): hello(Void) {}
 
@@ -37,9 +33,9 @@ module Test {
         fun new(this): A.blah(bool) { return true; }
     }
 
-    fun foo(goo: Foo): Void { }
+    fun foo(goo: Foo.Bar): Void { }
 
-    //import { Type as type } from "module:core";
+    import { Type as type } from "module:core";
 
-    fun generic(T: type, { value: T} );
+    // fun generic(T: type, { value: T } );
 }
