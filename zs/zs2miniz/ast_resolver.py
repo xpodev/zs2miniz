@@ -19,14 +19,20 @@ _T = TypeVar("_T")
 class ResolverContext:
     _scope: Scope[resolved.ResolvedNode]
     _mapping: dict[resolved.ResolvedNode, Scope]
+    _injected_nodes: list[resolved.ResolvedNode]
 
     def __init__(self, global_scope: Scope | None):
         self._scope = Scope(global_scope)
         self._mapping = {}
+        self._injected_nodes = []
 
     @property
     def current_scope(self):
         return self._scope
+
+    @property
+    def injected_nodes(self):
+        return self._injected_nodes
 
     @contextmanager
     def scope(self, scope: Scope | None = _SENTINEL, **items):
@@ -50,6 +56,9 @@ class ResolverContext:
     def use_scope(self, node: resolved.ResolvedNode):
         with self.scope(self._mapping[node]) as scope:
             yield scope
+
+    def inject(self, node: resolved.ResolvedNode):
+        self._injected_nodes.append(node)
 
 
 class _SubProcessor(StatefulProcessor):
@@ -138,7 +147,7 @@ class NodeRegistry(_SubProcessor):
 
             if node.body is not None:
                 with self.context.create_scope(result):
-                    result.body = list(filter(bool, map(self.register, node.body)))
+                    result.body.instructions = list(filter(bool, map(self.register, node.body)))
 
         return result
 
@@ -187,7 +196,7 @@ class NodeRegistry(_SubProcessor):
             case _:
                 raise TypeError
 
-        return resolved.Evaluate(result)
+        return result
 
     @_reg
     def _(self, node: nodes.Literal):
@@ -296,10 +305,6 @@ class NodeResolver(_SubProcessor):
 
     _res = _resolve.register
 
-    @_res
-    def _(self, node: resolved.Evaluate):
-        node.value = self.resolve(node.value)
-
     # region Resolved Nodes
 
     @_res
@@ -316,7 +321,7 @@ class NodeResolver(_SubProcessor):
             node.variadic_positional_parameter = self.resolve(node.variadic_positional_parameter)
             node.variadic_named_parameter = self.resolve(node.variadic_named_parameter)
             node.return_type = self.resolve(node.return_type)
-            node.body = list(map(self.resolve, node.body)) if node.body is not None else None
+            node.body.instructions = list(map(self.resolve, node.body.instructions)) if node.body is not None else None
 
     @_res
     def _(self, node: resolved.ResolvedFunctionCall):
@@ -374,7 +379,6 @@ class NodeResolver(_SubProcessor):
 
 class NodeProcessor(StatefulProcessor):
     _nodes: list[Node]
-    _injected: list[resolved.ResolvedNode]
 
     _context: ResolverContext
 
@@ -399,7 +403,7 @@ class NodeProcessor(StatefulProcessor):
         self._nodes.append(node)
 
     def inject(self, node: resolved.ResolvedNode):
-        self._injected.append(node)
+        self.context.inject(node)
 
     def resolve(self) -> list[resolved.ResolvedNode]:
         result = []
@@ -413,7 +417,7 @@ class NodeProcessor(StatefulProcessor):
         for node in result:
             self._resolver.resolve(node)
 
-        for node in self._injected:
+        for node in self.context.injected_nodes:
             self._resolver.resolve(node)
 
         self._nodes.clear()

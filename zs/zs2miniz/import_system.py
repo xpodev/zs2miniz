@@ -1,6 +1,7 @@
 import typing
 
 from zs.processing import StatefulProcessor
+from zs.ast.resolved import ResolvedImport
 
 if typing.TYPE_CHECKING:
     from zs.zs_compiler import ZSCompiler
@@ -8,7 +9,7 @@ if typing.TYPE_CHECKING:
 import re
 from pathlib import Path
 
-from miniz.interfaces.base import ScopeProtocol
+from miniz.interfaces.base import ScopeProtocol, IMiniZObject
 
 
 class Importer:
@@ -110,3 +111,12 @@ class ImportSystem(StatefulProcessor, Importer):
         if (result := (Path.cwd() / path)).exists():
             return result
         return None
+
+
+class ImportResult:
+    node: ResolvedImport
+    source: IMiniZObject | None
+
+    def __init__(self, node: ResolvedImport):
+        self.node = node
+        self.source = None

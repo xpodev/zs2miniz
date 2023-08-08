@@ -2,7 +2,7 @@ import typing
 from enum import Enum
 from pathlib import Path
 
-from utils import DependencyGraph
+# from utils import DependencyGraph
 from zs.processing import State, StatefulProcessor
 from zs.text.file_info import DocumentInfo, SourceFile
 from zs.text.parser import Parser
@@ -10,7 +10,7 @@ from zs.text.token_stream import TokenStream
 from zs.text.tokenizer import Tokenizer
 from zs.zs2miniz.ast_resolver import NodeProcessor
 from zs.zs2miniz.compiler import NodeCompiler
-from zs.zs2miniz.dependency_finder import DependencyFinder
+from zs.zs2miniz.dependency_finder import DependencyFinderDispatcher, DependencyFinder_Old, DependencyGraph
 from zs.zs2miniz.lib import CompilationContext
 
 if typing.TYPE_CHECKING:
@@ -108,18 +108,33 @@ class Toolchain(StatefulProcessor):
                 return document.resolved_nodes
             case ToolchainResult.BuildOrder:
                 if document.build_order is None:
-                    dependency_finder = DependencyFinder(state=self.state)
+                    dependency_finder = DependencyFinderDispatcher(self.state)
                     nodes = self.execute_document(info, result=ToolchainResult.ResolvedAST)
-                    nodes = sum((dependency_finder.flatten_tree(node) for node in nodes), nodes)
-                    document.build_order = DependencyGraph.from_list(
-                        nodes, dependency_finder.find_dependencies
-                    )
+                    nodes = sum((DependencyFinder_Old(state=self.state).flatten_tree(node) for node in nodes), nodes)
+                    graph = DependencyGraph()
+                    with dependency_finder.finder(dependency_finder.runtime_finder), dependency_finder.graph(graph):
+                        # document.build_order = DependencyGraph.from_list(
+                        #     nodes, dependency_finder.find
+                        # )
+                        for node in nodes:
+                            dependency_finder.find(node)
+                        document.build_order = graph.order_dependencies(self.state)
                 return document.build_order
             case ToolchainResult.MiniZObjects:
                 if document.objects is None:
-                    document.objects = self.compiler.compile(sum(self.execute_document(info, result=ToolchainResult.BuildOrder), []))
+                    build_order = self.execute_document(info, result=ToolchainResult.BuildOrder)
+                    mapping = dict(self.compiler.declare(self.execute_document(info, result=ToolchainResult.ResolvedAST)))
+                    nodes = []
+                    for build in build_order:
+                        for node in build:
+                            nodes.append((node, mapping.get(node, self.compiler.context.cache(node))))
+                    # here we need to declare all objects which are not explicitly owned by any node, so they
+                    # were not declared when the AST was recursively walked over.
+                    for node in self.resolver.context.injected_nodes:
+                        nodes.append((node, self.compiler.declare(node)))
+                    document.objects = self.compiler.define(nodes)
                     for name, item in self.resolver.context.current_scope.defined_names:
-                        document.object_scope.create_name(name, self.compiler.compile(item))
+                        document.object_scope.create_name(name, self.compiler.context.cache(item))
                 return document.objects
             case ToolchainResult.DocumentContext:
                 self.execute_document(info, result=ToolchainResult.MiniZObjects)

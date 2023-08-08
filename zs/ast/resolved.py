@@ -3,7 +3,7 @@ from typing import Generic, TypeVar, TYPE_CHECKING
 if TYPE_CHECKING:
     from miniz.type_system import ObjectProtocol
 from zs.ast.node import Node
-from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier, MemberAccess
+from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier, MemberAccess, Return
 
 _T = TypeVar("_T", bound=Node)
 
@@ -18,20 +18,21 @@ class ResolvedNode(Generic[_T]):
     def _init(self):
         ...
 
+    def __str__(self):
+        name = getattr(self, "name", f"at {id(self)}")
+
+        return f"<{type(self).__name__} object '{name}'>"
+
 
 class ResolvedExpression(ResolvedNode[Expression[_T]], Generic[_T]):
     ...
 
 
+class ResolvedStatement(ResolvedNode[_T], Generic[_T]):
+    ...
+
+
 # region Concrete
-
-
-class Evaluate(ResolvedNode[_T], Generic[_T]):
-    value: ResolvedExpression[_T] | ResolvedNode[_T]
-
-    def __init__(self, node: ResolvedExpression[_T] | ResolvedNode[_T]):
-        super().__init__(node.node)
-        self.value = node
 
 
 class ResolvedBinary(ResolvedExpression[Binary]):
@@ -60,8 +61,18 @@ class ResolvedClass(ResolvedExpression[Class]):
         return f"ResolvedClass {self.name or '{Anonymous}'}"
 
 
-class ResolvedExpressionStatement(ResolvedNode[ExpressionStatement]):
+class ResolvedExpressionStatement(ResolvedStatement[ExpressionStatement]):
     expression: ResolvedExpression
+
+
+class ResolvedFunctionBody(ResolvedNode[None]):
+    owner: "ResolvedFunction"
+    instructions: list[ResolvedNode] | None
+
+    def __init__(self, owner: "ResolvedFunction"):
+        super().__init__(None)
+        self.owner = owner
+        self.instructions = None
 
 
 class ResolvedFunction(ResolvedNode[Function]):
@@ -70,7 +81,7 @@ class ResolvedFunction(ResolvedNode[Function]):
     named_parameters: list["ResolvedParameter"]
     variadic_positional_parameter: "ResolvedParameter | None"
     variadic_named_parameter: "ResolvedParameter | None"
-    body: list[ResolvedNode] | None
+    body: ResolvedFunctionBody
 
     def _init(self):
         self.return_type = None
@@ -78,7 +89,7 @@ class ResolvedFunction(ResolvedNode[Function]):
         self.named_parameters = []
         self.variadic_positional_parameter = None
         self.variadic_named_parameter = None
-        self.body = None
+        self.body = ResolvedFunctionBody(self)
 
     @property
     def name(self):
@@ -86,7 +97,7 @@ class ResolvedFunction(ResolvedNode[Function]):
 
 
 class ResolvedFunctionCall(ResolvedExpression[FunctionCall]):
-    callable: "ResolvedFunction | None"
+    callable: "ResolvedExpression | None"
     arguments: list[ResolvedExpression] | None
     keyword_arguments: dict[str, ResolvedExpression] | None
 
@@ -95,7 +106,7 @@ class ResolvedFunctionCall(ResolvedExpression[FunctionCall]):
         return self.node.operator
 
 
-class ResolvedImport(ResolvedNode[Import]):
+class ResolvedImport(ResolvedStatement[Import]):
     class ImportedName(ResolvedExpression[Identifier | Alias]):
         name: str
         origin: "ResolvedImport"
@@ -105,7 +116,7 @@ class ResolvedImport(ResolvedNode[Import]):
             self.name = name
             self.origin = origin
 
-    source: Evaluate[ResolvedExpression] | ResolvedExpression | None
+    source: ResolvedExpression | None
     imported_names: list[ImportedName]
 
     def _init(self):
@@ -168,7 +179,7 @@ class ResolvedParameter(ResolvedNode[Parameter]):
         return self.node.name.name
 
 
-class ResolvedReturn(ResolvedNode):
+class ResolvedReturn(ResolvedStatement[Return]):
     expression: ResolvedExpression
 
 
@@ -176,7 +187,7 @@ class ResolvedUnary(ResolvedExpression[Unary]):
     ...
 
 
-class ResolvedVar(ResolvedNode[Var]):
+class ResolvedVar(ResolvedStatement[Var]):
     type: ResolvedExpression | None
     initializer: ResolvedExpression | None
 
@@ -187,3 +198,5 @@ class ResolvedVar(ResolvedNode[Var]):
     @property
     def name(self):
         return self.node.name.name.name
+
+# endregion

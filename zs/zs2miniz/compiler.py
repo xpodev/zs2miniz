@@ -4,7 +4,7 @@ This module defines the class that's responsible for compiling a function body f
 
 from contextlib import contextmanager
 from functools import singledispatchmethod, wraps
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, Callable, TypeAlias, Type
 
 from miniz.concrete.function import FunctionBody, Function
 from miniz.concrete.module import Module
@@ -12,11 +12,13 @@ from miniz.concrete.oop import Class, Field, Method
 from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
 from miniz.core import ImplementsType, ObjectProtocol
+from miniz.generic.function import GenericFunction
+from miniz.generic.generic_construction import IConstructor
 from miniz.generic.signature import GenericParameter
 from miniz.interfaces.base import IMiniZObject, ScopeProtocol
 from miniz.interfaces.function import IFunction, IFunctionSignature
 from miniz.interfaces.module import IModule
-from miniz.interfaces.oop import IClass, IField, Binding, IOOPMember, IMethod, IInterface, ITypeclass, IStructure
+from miniz.interfaces.oop import IClass, IField, Binding, IOOPMember, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition
 from miniz.interfaces.signature import IParameter
 from miniz.type_system import Any, is_type, assignable_to, Void, String
 from miniz.vm import instructions as vm
@@ -25,28 +27,119 @@ from miniz.vm.runtime import Interpreter
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
 from zs.zs2miniz.errors import CompilerNotAvailableError
+from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
 
 _T = TypeVar("_T")
 _SENTINEL = object()
 
 
-def _cached(fn):
-    @wraps(fn)
-    def wrapper(self: "_SubCompiler", node: resolved.ResolvedNode, *args, **kwargs):
-        try:
-            return self.cache(node)
-        except KeyError:
-            return self.cache(node, fn(self, node, *args, **kwargs))
+DefinitionFunction: TypeAlias = Callable[[resolved.ResolvedNode, IMiniZObject | None], IMiniZObject | None]
 
-    return wrapper
+
+class Cache:
+    _cache: dict[resolved.ResolvedNode, IMiniZObject]
+
+    def __init__(self):
+        self._cache = {}
+
+    def cache(self, node: resolved.ResolvedNode, item: IMiniZObject | None = _SENTINEL, *, default=_SENTINEL):
+        if item is _SENTINEL:
+            try:
+                return self._cache[node]
+            except KeyError:
+                if default is not _SENTINEL:
+                    return default
+                raise
+        if item is not None:
+            self._cache[node] = item
+        return item
+
+
+# def _cached(fn):
+#     @wraps(fn)
+#     def wrapper(self: "_SubCompiler", node: resolved.ResolvedNode, *args, **kwargs):
+#         try:
+#             return self.cache(node)
+#         except KeyError:
+#             return self.cache(node, fn(self, node, *args, **kwargs))
+#
+#     return wrapper
+#
+#
+# DECLARATION = Cache()
+# DEFINITION = Cache()
 
 
 class CompilerContext:
-    ...
+    _cache: Cache
+    _built: set[resolved.ResolvedNode]
+    _compiler: "NodeCompiler"
+
+    def __init__(self, compiler: "NodeCompiler"):
+        self._cache = Cache()
+        self._built = set()
+        self._compiler = compiler
+
+    @property
+    def compiler(self):
+        return self._compiler
+
+    def cache(self, node: resolved.ResolvedNode, item: IMiniZObject | None = _SENTINEL, *, default=_SENTINEL):
+        return self._cache.cache(node, item, default=default)
+
+    def mark_defined(self, node: resolved.ResolvedNode):
+        self._built.add(node)
+        return node
+
+    def require_definition(self, node: resolved.ResolvedNode):
+        if node is None:
+            return None
+        if node in self._built:
+            return self.cache(node)
+        item = self.cache(node, default=None)
+        result = self.compiler.dispatcher.compile(node, item)
+        self.mark_defined(node)
+        if item is None and result is not None:
+            self.cache(node, result)
+        return result or item
 
 
-class _SubCompiler(StatefulProcessor):
+# class _SubCompiler(StatefulProcessor):
+#     _compiler: "NodeCompiler"
+#
+#     def __init__(self, compiler: "NodeCompiler"):
+#         super().__init__(compiler.state)
+#         self._compiler = compiler
+#
+#     @property
+#     def compiler(self):
+#         return self._compiler
+#
+#     @property
+#     def context(self):
+#         return self.compiler.context
+#
+#     def cache(self, *args):
+#         return self.compiler.cache(*args)
+#
+#     def declare(self, node: resolved.ResolvedNode) -> IMiniZObject | None:
+#         return self.create_object(node)
+#
+#     def create_object(self, node: resolved.ResolvedNode) -> IMiniZObject | None:
+#         raise NotImplementedError(f"[{type(self).__name__}] Can't declare node of type \'{type(node).__name__}\'")
+#
+#     def compile(self, node: resolved.ResolvedNode):
+#         # return self.define(node, result := self.declare(node)) or result
+#         # if isinstance(node, resolved.ResolvedObject):
+#         #     return node.object
+#         return self._compile(node)
+#
+#     def _compile(self, node: resolved.ResolvedNode):
+#         raise NotImplementedError(f"[{type(self).__name__}] Can't compile node of type \'{type(node).__name__}\'")
+
+
+class CompilerBase(StatefulProcessor, Generic[_T]):
     _compiler: "NodeCompiler"
 
     def __init__(self, compiler: "NodeCompiler"):
@@ -61,107 +154,57 @@ class _SubCompiler(StatefulProcessor):
     def context(self):
         return self.compiler.context
 
-    def cache(self, *args):
-        return self.compiler.cache(*args)
-
-    def compile(self, node: resolved.ResolvedNode):
-        if isinstance(node, resolved.ResolvedObject):
-            return node.object
-        return self._compile(node)
-
-    def _compile(self, node: resolved.ResolvedNode):
-        raise NotImplementedError(f"[{type(self).__name__}] Can't compile node of type \'{type(node).__name__}\'")
-
-
-class ContextualCompiler(_SubCompiler, Generic[_T]):
-    _context_item: _T | None
-    _node: resolved.ResolvedNode | None
-
-    def __init__(self, compiler: "NodeCompiler"):
-        super().__init__(compiler)
-        self._context_item = None
-        self._node = None
-
-    @property
-    def current_context_item(self):
-        return self._context_item
-
-    @property
-    def compiler(self):
-        return self._compiler
-
-    @contextmanager
-    def context_item(self, item: _T, node: resolved.ResolvedNode = None):
-        node, self._node = self._node, node
-        item, self._context_item = self._context_item, item
-        try:
-            yield self._context_item
-        finally:
-            self._context_item = item
-            self._node = node
-
-    def compile(self, node: resolved.ResolvedNode = _SENTINEL):
-        if node is _SENTINEL:
-            self.cache(node := self._node, self.current_context_item)
-            return self.compile_current_context_item(node)
-        return super().compile(node)
-
-    def _compile(self, node: resolved.ResolvedNode):
-        return super()._compile(node)
-
-    def compile_current_context_item(self, node: resolved.ResolvedNode):
+    def construct(self, node: resolved.ResolvedNode) -> _T | None:
         raise NotImplementedError
 
-    # def compile(self, node: ResolvedNode, **kwargs) -> _T:
-    #     try:
-    #         return self.cache(node)
-    #     except KeyError:
-    #         return self._compile(node, **kwargs)
-    #
-    # def _compile(self, node: ResolvedNode, **_):
-    #     if isinstance(node, ResolvedObject):
-    #         return node.object
-    #     raise NotImplementedError(f"Can't compile node of type \'{type(node)}\' because it is not implemented yet")
+    def compile(self, node: resolved.ResolvedNode, item: _T | None) -> _T | None:
+        raise NotImplementedError
 
 
-class ModuleCompiler(ContextualCompiler[IModule]):
-    def compile_current_context_item(self, node: resolved.ResolvedModule):
+class ModuleCompiler(CompilerBase[IModule]):
+    def construct(self, node: resolved.ResolvedModule) -> Module | None:
+        module = Module(node.name)
+
         for item in node.items:
-            try:
-                self.compile(item)
-            except NotImplementedError:
-                self.compiler.compile(item)
+            self.context.cache(item, self._construct(item, module))
+
+        return module
 
     @singledispatchmethod
-    def _compile(self, node: resolved.ResolvedNode):
-        super()._compile(node)
+    def _construct(self, node: resolved.ResolvedNode, module: Module):
+        raise TypeError(f"Can't construct object from node of type '{type(node)}' inside module '{module}'")
 
-    _cpl = _compile.register
+    _con = _construct.register
 
-    @_cpl
-    # @_cached
-    def _(self, node: resolved.ResolvedClass):
-        cls = self.compiler.top_level_compiler.compile(node)
-        self.current_context_item.types.append(cls)
-        return cls
+    @_con
+    def _(self, node: resolved.ResolvedClass, module: Module):
+        result = self.compiler.class_compiler.construct(node)
+        module.types.append(result)
+        return result
 
-    @_cpl
-    # @_cached
-    def _(self, node: resolved.ResolvedFunction):
-        fn = self.compiler.top_level_compiler.compile(node)
-        self.current_context_item.functions.append(fn)
-        return fn
+    @_con
+    def _(self, node: resolved.ResolvedFunction, module: Module):
+        result = self.compiler.function_compiler.construct(node)
+        module.functions.append(result)
+        return result
 
-    @_cpl
-    # @_cached
-    def _(self, node: resolved.ResolvedOverloadGroup):
-        group = OverloadGroup(node.name, self.compiler.compile(node.parent) if node.parent else None)
-        for overload in node.overloads:
-            self._compile(overload)
-        return group
+    @_con
+    def _(self, node: resolved.ResolvedImport, module: None):
+        # add information that module imported from node
+        return ImportResult(node)
+
+    def compile(self, node: resolved.ResolvedNode, item: _T | None):
+        return None
+
+    # @_rec
+    # def _(self, node: resolved.ResolvedOverloadGroup):
+    #     group = OverloadGroup(node.name, self.compiler.compile(node.parent) if node.parent else None)
+    #     for overload in node.overloads:
+    #         self._compile(overload)
+    #     return group
 
 
-class FunctionCompiler(ContextualCompiler[Function]):
+class FunctionCompiler(CompilerBase[IFunction]):
     _function_body_compiler: "FunctionBodyCompiler"
 
     def __init__(self, compiler: "NodeCompiler"):
@@ -173,184 +216,193 @@ class FunctionCompiler(ContextualCompiler[Function]):
     def function_body_compiler(self):
         return self._function_body_compiler
 
-    def compile_current_context_item(self, node: resolved.ResolvedFunction):
+    def construct(self, node: resolved.ResolvedFunction) -> Function:
+        fn = Function(node.name)
+
+        self.construct_parameters(node, fn)
+
+        self.context.cache(node.body, fn.body)
+
+        return fn
+
+    def construct_parameters(self, node: resolved.ResolvedFunction, fn: Function):
+        sig = fn.signature
+
         for parameter in node.positional_parameters:
-            self.current_context_item.positional_parameters.append(self._compile_parameter(parameter))
+            sig.positional_parameters.append(self.context.cache(parameter, self.create_parameter(parameter)))
 
         for parameter in node.named_parameters:
-            self.current_context_item.named_parameters.append(self._compile_parameter(parameter))
+            sig.named_parameters.append(self.context.cache(parameter, self.create_parameter(parameter)))
 
         if node.variadic_positional_parameter:
-            self.current_context_item.variadic_positional_parameter = self._compile_parameter(node.variadic_positional_parameter)
+            sig.variadic_positional_parameter = self.context.cache(node.variadic_positional_parameter, self.create_parameter(node.variadic_positional_parameter))
 
         if node.variadic_named_parameter:
-            self.current_context_item.variadic_named_parameter = self._compile_parameter(node.variadic_named_parameter)
-
-        self.current_context_item.return_type = self.compiler.compile(resolved.Evaluate(node.return_type)) if node.return_type is not None else None
-
-        if node.body is not None:
-            with self.compiler.code_compiler.code_context(self._function_body_compiler):
-                body = self.compiler.code_compiler.compile_code(node.body)
-                for item in body:
-                    self.current_context_item.body.instructions.append(item)
-
-        if self.current_context_item.return_type is None:
-            self.current_context_item.return_type = Any  # todo: infer
+            sig.variadic_named_parameter = self.context.cache(node.variadic_positional_parameter, self.create_parameter(node.variadic_named_parameter))
 
     @singledispatchmethod
-    def _compile(self, node: resolved.ResolvedFunction):
-        return super()._compile(node)
+    def compile(self, node: resolved.ResolvedFunction, item: IMiniZObject):
+        super().compile(node, item)
 
-    _cpl = _compile.register
+    _cpl = compile.register
 
-    def _compile_parameter(self, node: resolved.ResolvedParameter):
-        parameter_type = self.compiler.compile(node.type) if node.type else Any
-        if is_type(parameter_type):
-            factory = Parameter
+    @_cpl
+    def _(self, node: resolved.ResolvedFunction, item: Function) -> None:
+        if node.return_type is None:
+            item.signature.return_type = Any  # todo: infer
         else:
-            factory = GenericParameter
-        result = factory(node.name, parameter_type)
-        self.compiler.cache(node, result)
+            item.signature.return_type = self.compiler.evaluate(node.return_type)
+
+    @_cpl
+    def _(self, node: resolved.ResolvedFunctionBody, item: FunctionBody):
+        with self.compiler.expression_compiler.code_context(self._function_body_compiler):
+            if node is not None:
+                self.context.mark_defined(node)
+
+                body = self.compiler.expression_compiler.compile_code(node.instructions)
+                for instruction in body:
+                    item.instructions.append(instruction)
+            else:
+                del item.instructions
+
+    @_cpl
+    def _(self, node: resolved.ResolvedParameter, item: Parameter):
+        if node.type:
+            item.parameter_type = self.compiler.evaluate(node.type)
+        else:
+            item.parameter_type = Any
+
+    def create_parameter(self, node: resolved.ResolvedParameter):
+        # parameter_type = self.compiler.evaluate(node.type) if node.type else Any
+        # if is_type(parameter_type) and not isinstance(parameter_type, IConstructor):
+        #     factory = Parameter
+        # else:
+        #     factory = GenericParameter
+        # return factory(node.name, parameter_type)
+        # todo: get dependencies to check if we need to create a generic parameter instead
+        return Parameter(node.name)
+
+
+class MethodCompiler(FunctionCompiler):
+    def construct(self, node: resolved.ResolvedFunction) -> Method:
+        fn = Method(node.name)
+
+        self.construct_parameters(node, fn)
+
+        self.context.cache(node.body, fn.body)
+
+        return fn
+
+
+class ClassCompiler(CompilerBase[Class]):
+    method_compiler: MethodCompiler
+
+    def __init__(self, compiler: "NodeCompiler"):
+        super().__init__(compiler)
+
+        self.method_compiler = MethodCompiler(compiler)
+
+    def construct(self, node: resolved.ResolvedClass) -> Class:
+        cls = Class(node.name)
+
+        for item in node.items:
+            self.context.cache(item, self._construct(item, cls))
+
+        return cls
+
+    @singledispatchmethod
+    def _construct(self, node: resolved.ResolvedNode, cls: Class):
+        raise TypeError(f"Can't compile object from node of type '{type(node)}' inside class '{cls}'")
+
+    _con = _construct.register
+
+    @_con
+    def _(self, node: resolved.ResolvedClass, cls: Class):
+        result = self.construct(node)
+        cls.nested_definitions.append(result)
         return result
 
+    @_con
+    def _(self, node: resolved.ResolvedFunction, cls: Class):
+        result = self.method_compiler.construct(node)
+        if result.name == "new":
+            cls.constructors.append(result)
+        else:
+            cls.methods.append(result)
 
-class FunctionBodyCompiler(ContextualCompiler[FunctionBody]):
-    @property
-    def stack(self):
-        return self.compiler.code_compiler.stack
+        return result
 
-    @contextmanager
-    def context_item(self, item: FunctionBody, node: resolved.ResolvedFunction = None):
-        state = self.stack.reset()
-        try:
-            with super().context_item(item, node) as ctx_item:
-                yield ctx_item
-                if item.owner.signature.return_type is not Void:
-                    result = self.stack.top()[0]
-                    returns = item.owner.signature.return_type
-                    assert assignable_to(result, returns)
-        finally:
-            self.stack.reset(state)
+    # @_rec
+    # @_cached
+    # def _(self, node: resolved.ResolvedOverloadGroup):
+    #     group = OverloadGroup(node.name, self.compiler.compile(node.parent) if node.parent else None)
+    #     for overload in node.overloads:
+    #         self._compile(overload)
+    #     return group
 
-    def compile(self, node: resolved.ResolvedNode = _SENTINEL):
-        if node is _SENTINEL:
-            return super().compile()
-        return self._compile(node)
-
-    def compile_current_context_item(self, node: resolved.ResolvedFunction):
-        if node.body is not None:
-            for item in node.body:
-                for inst in self.compile(item):
-                    self.current_context_item.instructions.append(inst)
+    @_con
+    def _(self, node: resolved.ResolvedVar, cls: Class):
+        result = Field(node.name)
+        cls.fields.append(result)
+        return result
 
     @singledispatchmethod
-    def _compile(self, node: resolved.ResolvedNode):
-        raise CompilerNotAvailableError
+    def compile(self, node: resolved.ResolvedNode, item: _T) -> None:
+        raise TypeError(type(node), type(item))
 
-    _cpl = _compile.register
-
-    # @_cpl
-    # def _(self, node: res.ResolvedClassCall):
-    #     result = []
-    #
-    #     for arg in node.arguments:
-    #         result.extend(self.compile(arg))
-    #     # todo: named args
-    #     # todo: find suitable constructor
-    #     cls = self.compiler.compile(node.callable)
-    #     assert isinstance(cls, Class)
-    #     args = self._stack.top(len(node.arguments))
-    #     constructors = cls.constructor.get_match(args, [], strict=True)
-    #     if not constructors:
-    #         constructors = cls.constructor.get_match(args, [])
-    #     if len(constructors) != 1:
-    #         raise ValueError
-    #     return [*result, vm.CreateInstance(constructors[0])]
-
-    # @_cpl
-    # def _(self, node: res.ResolvedFunctionCall):
-    #     return self.compiler.code_compiler.compile(node)
+    _cpl = compile.register
 
     @_cpl
-    def _(self, node: resolved.ResolvedParameter):
-        parameter = self.cache(node)
-        assert isinstance(parameter, Parameter)
-        self.stack.push_argument(parameter)
-        return [vm.LoadArgument(parameter)]
-
-    @_cpl
-    def _(self, node: resolved.ResolvedObject):
-        obj = node.object
-        self.stack.push_object(obj)
-        return [vm.LoadObject(obj)]
-
-    @_cpl
-    def _(self, node: resolved.ResolvedReturn):
-        return [*(self.compiler.code_compiler.compile(node.expression) if node.expression else ()), vm.Return()]
-
-
-class ClassCompiler(ContextualCompiler[Class]):
-    def compile_current_context_item(self, node: resolved.ResolvedClass):
-        bases = list(map(self.compiler.compile, node.bases))
+    def _(self, node: resolved.ResolvedClass, item: Class):
+        bases = list(map(self.compiler.evaluate, node.bases))
 
         if bases:
             if isinstance(bases[0], IClass):
-                self.current_context_item.base = bases.pop(0)
+                item.base = bases.pop(0)
 
             for base in bases:
                 if not isinstance(base, (IInterface, ITypeclass, IStructure)):
                     raise TypeError
-                self.current_context_item.specifications.append(base)
-
-        for item in node.items:
-            self.compile(item)
-
-    @singledispatchmethod
-    def _compile(self, node: resolved.ResolvedNode):
-        super()._compile(node)
-
-    _cpl = _compile.register
+                item.specifications.append(base)
 
     @_cpl
-    def _(self, node: resolved.ResolvedClass):
-        current = self.current_context_item
-        with self.compiler.class_compiler.context_item(Class(node.name), node) as result:
-            self.compiler.class_compiler.compile()
-        current.nested_definitions.append(result)
-        return result
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedFunction):
-        with self.compiler.function_compiler.context_item(Method(node.name), node) as result:
-            # self.compiler.function_compiler.compile()
-            if result.name == "new":
-                self.current_context_item.constructors.append(result)
-            else:
-                self.current_context_item.methods.append(result)
-
-        return result
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedOverloadGroup):
-        group = OverloadGroup(node.name, self.compiler.compile(node.parent) if node.parent else None)
-        for overload in node.overloads:
-            self._compile(overload)
-        return group
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedVar):
-        field = Field(node.name)  # todo: execute expression? or maybe by build order
-        if node.type:
-            field.field_type = self.compiler.compile(resolved.Evaluate(node.type))
-        self.current_context_item.fields.append(field)
-
-        return field
+    def _(self, node: resolved.ResolvedVar, item: Field):
+        item.field_type = self.compiler.evaluate(node.type)
 
 
-class CodeCompiler(_SubCompiler):
+class CodeContext:
+    _code_compiler: "CodeCompiler | None"
+    _compiler: "NodeCompiler"
+
+    def __init__(self, compiler: "NodeCompiler"):
+        self._code_compiler = None
+        self._compiler = compiler
+
+    @property
+    def compiler(self):
+        return self._compiler
+
+    @property
+    def context(self):
+        return self.compiler.context
+
+    @property
+    def stack(self):
+        return self.code_compiler.stack
+
+    @property
+    def code_compiler(self):
+        return self._code_compiler
+
+    @code_compiler.setter
+    def code_compiler(self, value: "CodeCompiler | None"):
+        self._code_compiler = value
+
+    def compile(self, node: resolved.ResolvedNode) -> list[Instruction]:
+        raise NotImplementedError
+
+
+class CodeCompiler:
     class StackTypeChecker:
         _stack: list[ImplementsType]
 
@@ -419,14 +471,24 @@ class CodeCompiler(_SubCompiler):
 
     _stack: StackTypeChecker
 
-    _code_context: _SubCompiler | None
+    _code_context_stack: list[CodeContext]
+
+    _compiler: "NodeCompiler"
 
     def __init__(self, compiler: "NodeCompiler"):
-        super().__init__(compiler)
+        self._compiler = compiler
 
         self._stack = self.StackTypeChecker()
 
-        self._code_context = None
+        self._code_context_stack = [TopLevelCodeCompiler(self)]
+
+    @property
+    def compiler(self):
+        return self._compiler
+
+    @property
+    def context(self):
+        return self.compiler.context
 
     @property
     def stack(self):
@@ -434,15 +496,20 @@ class CodeCompiler(_SubCompiler):
 
     @property
     def current_code_context(self):
-        return self._code_context
+        try:
+            return self._code_context_stack[-1]
+        except IndexError:
+            return None
 
     @contextmanager
-    def code_context(self, ctx: _SubCompiler):
-        ctx, self._code_context = self._code_context, ctx
+    def code_context(self, ctx: CodeContext):
+        self._code_context_stack.append(ctx)
+        compiler, ctx.code_compiler = ctx.code_compiler, self
         try:
             yield
         finally:
-            self._code_context = ctx
+            self._code_context_stack.pop()
+            ctx.code_compiler = compiler
 
     def compile_code(self, code: list[resolved.ResolvedNode]) -> list[Instruction]:
         result = []
@@ -452,21 +519,27 @@ class CodeCompiler(_SubCompiler):
 
         return result
 
+    def compile_expression(self, expression: resolved.ResolvedExpression) -> list[Instruction]:
+        return self.compile_code([expression])
+
     def compile(self, node: resolved.ResolvedNode):
-        try:
-            return self._code_context.compile(node)
-        except CompilerNotAvailableError:
+        for compiler in reversed(self._code_context_stack):
+            result = compiler.compile(node)
+            if result is not None:
+                break
+        else:
             return self._compile(node)
+        return result
 
     @singledispatchmethod
     def _compile(self, node: resolved.ResolvedNode):
-        return super()._compile(node)
+        raise TypeError(f"Default code compiler can't compile node of type '{type(node)}'")
 
     _cpl = _compile.register
 
     @_cpl
     def _(self, node: resolved.ResolvedClass):
-        cls = self.compiler.compile(node)
+        cls = self.context.cache(node)
         self._stack.push_object(cls)
         return [vm.LoadObject(cls)]
 
@@ -476,7 +549,7 @@ class CodeCompiler(_SubCompiler):
 
         fact = vm.Call
 
-        group = self.compiler.compile(resolved.Evaluate(node.callable) if isinstance(node.callable, resolved.ResolvedExpression) else node.callable)
+        group = self.compiler.evaluate(node.callable)
         if isinstance(group, IClass):
             self.stack.push_type(group)
 
@@ -526,7 +599,7 @@ class CodeCompiler(_SubCompiler):
 
     @_cpl
     def _(self, node: resolved.ResolvedImport.ImportedName):
-        imported = self.cache(node)
+        imported = self.context.cache(node)
         self.stack.push_object(imported)
         return [vm.LoadObject(imported)]
 
@@ -569,6 +642,8 @@ class CodeCompiler(_SubCompiler):
                 return [vm.LoadObject(member)]
             case OverloadGroup():
                 return [vm.LoadObject(member)]
+            case IOOPDefinition():
+                return [vm.LoadObject(member)]
 
         raise TypeError(type(member))
 
@@ -579,153 +654,232 @@ class CodeCompiler(_SubCompiler):
 
     @_cpl
     def _(self, node: resolved.ResolvedOverloadGroup):
-        return [vm.LoadObject(self.compiler.compile(node))]
+        return [vm.LoadObject(self.compiler.define((node, self.compiler.declare(node))))]
 
     @_cpl
     def _(self, node: resolved.ResolvedVar):
         return self.current_code_context.compile(node)
 
 
-class TopLevelCompiler(_SubCompiler):
-    _code_compiler: "TopLevelCodeCompiler"
-
+class TopLevelCompiler(CompilerBase):
     def __init__(self, compiler: "NodeCompiler"):
         super().__init__(compiler)
-        self._code_compiler = TopLevelCodeCompiler(compiler)
+
+    # region Declare
+
+    def construct(self, node: resolved.ResolvedNode) -> IMiniZObject | None:
+        return self.context.cache(node, self._construct(node))
 
     @singledispatchmethod
-    def _compile(self, node: resolved.ResolvedNode):
-        return super()._compile(node)
+    def _construct(self, node: resolved.ResolvedNode):
+        raise TypeError(f"Node of type '{type(node)}' may not appear on the top level scope")
+
+    _con = _construct.register
+
+    @_con
+    def _(self, node: resolved.ResolvedClass):
+        return self.compiler.class_compiler.construct(node)
+
+    @_con
+    def _(self, node: resolved.ResolvedFunction):
+        return self.compiler.function_compiler.construct(node)
+
+    @_con
+    def _(self, node: resolved.ResolvedModule):
+        return self.compiler.module_compiler.construct(node)
+
+    @_con
+    def _(self, node: resolved.ResolvedImport):
+        return ImportResult(node)
+
+    @_con
+    def _(self, node: resolved.ResolvedOverloadGroup):
+        return OverloadGroup(node.name, None)
+
+    del _con
+
+    # endregion
+
+    def compile(self, node: resolved.ResolvedNode, item: _T) -> _T | None:
+        return self._compile(node, item)
+
+    @singledispatchmethod
+    def _compile(self, node: resolved.ResolvedNode, item: _T):
+        raise TypeError(f"{type(self).__name__} can't compile node of type '{node}' with object '{item}'")
 
     _cpl = _compile.register
 
     @_cpl
-    def _(self, node: resolved.Evaluate) -> IMiniZObject | ObjectProtocol | _T:
-        with self.compiler.code_compiler.code_context(self._code_compiler):
-            ctx = self.compiler.vm.run(self.compiler.code_compiler.compile_code([node.value]))
-            if isinstance(node.value, resolved.ResolvedExpression):
-                value = ctx.pop()
-                self.compiler.code_compiler.stack.pop()
-                # if not assignable_to(value.runtime_type, self.compiler.code_compiler.stack.pop()):
-                #     raise TypeError
-                return value
+    def _(self, node: resolved.ResolvedImport, item: ImportResult):
+        item.source = self.compiler.evaluate(node.source)
+        if not String.is_instance(item.source):
+            raise TypeError
+
+        result = self.compiler.compilation_context.import_system.import_from(item.source.native)
+
+        for imported_name in node.imported_names:
+            self.context.cache(imported_name, result.get_name(imported_name.name))
+            self.context.mark_defined(imported_name)
 
     @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedClass):
-        with self.compiler.class_compiler.context_item(Class(node.name), node) as result:
-            self.compiler.class_compiler.compile()
-
-            nodes = []
-
-            def _recurse(_node: resolved.ResolvedClass):
-                for _item in _node.items:
-                    if isinstance(_item, resolved.ResolvedClass):
-                        _recurse(_item)
-                    elif isinstance(_item, resolved.ResolvedFunction):
-                        nodes.append((_item, self.cache(_item)))
-
-            _recurse(node)
-
-            for node, item in nodes:
-                with self.compiler.function_compiler.context_item(item, node):
-                    self.compiler.function_compiler.compile()
-
-        return result
-
-    @_cpl
-    def _(self, node: resolved.ResolvedExpression):
-        with self.compiler.code_compiler.code_context(self._code_compiler):
-            return self.compiler.code_compiler.compile(node)
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedFunction):
-        with self.compiler.function_compiler.context_item(Function(node.name), node) as result:
-            self.compiler.function_compiler.compile()
-
-        return result
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedImport.ImportedName):
-        raise RuntimeError(f"This method should not be invoked.")
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedModule):
-        with self.compiler.module_compiler.context_item(Module(node.name), node) as result:
-            self.compiler.module_compiler.compile()
-
-        return result
-
-    @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedOverloadGroup):
-        result = OverloadGroup(node.name, self.compile(node.parent) if node.parent else None)
+    def _(self, node: resolved.ResolvedOverloadGroup, item: OverloadGroup):
+        item.parent = self.context.require_definition(node.parent)
 
         for overload in node.overloads:
-            result.overloads.append(self.compile(overload))
+            item.overloads.append(self.context.require_definition(overload))
 
-        return result
+    del _cpl
 
 
-class TopLevelCodeCompiler(_SubCompiler):
+class TopLevelCodeCompiler(CodeContext):
+    def __init__(self, code_compiler: "CodeCompiler"):
+        super().__init__(code_compiler.compiler)
+        self.code_compiler = code_compiler
+
+    def compile(self, node: resolved.ResolvedNode) -> list[Instruction]:
+        return self._compile(node)
+
+    @singledispatchmethod
+    def _compile(self, node: resolved.ResolvedNode):
+        return None
+        # raise TypeError(f"{type(self)} can't compile node of type '{type(node)}'")
+
+    _cpl = _compile.register
+
+    @_cpl
+    def _(self, node: resolved.ResolvedImport):
+        source = self.compiler.evaluate(node.source)
+        if not String.is_instance(source):
+            raise TypeError
+
+        result = self.compiler.compilation_context.import_system.import_from(source.native)
+
+        for imported_name in node.imported_names:
+            self.context.cache(imported_name, result.get_name(imported_name.name))
+            self.context.mark_defined(imported_name)
+
+    @_cpl
+    def _(self, node: resolved.ResolvedImport.ImportedName):
+        result = self.context.cache(node)
+        self.code_compiler.stack.push_object(result)
+        return [vm.LoadObject(result)]
+
+    @_cpl
+    def _(self, node: resolved.ResolvedObject):
+        self.code_compiler.stack.push_object(node.object)
+        return [vm.LoadObject(node.object)]
+
+
+class FunctionBodyCompiler(CodeContext):
     def compile(self, node: resolved.ResolvedNode):
         return self._compile(node)
 
     @singledispatchmethod
     def _compile(self, node: resolved.ResolvedNode):
-        raise CompilerNotAvailableError
+        return None
 
     _cpl = _compile.register
 
-    @_cpl
-    def _(self, node: resolved.Evaluate) -> IMiniZObject | ObjectProtocol | _T:
-        return self.compiler.top_level_compiler.compile(node)
+    # @_cpl
+    # def _(self, node: res.ResolvedClassCall):
+    #     result = []
+    #
+    #     for arg in node.arguments:
+    #         result.extend(self.compile(arg))
+    #     # todo: named args
+    #     # todo: find suitable constructor
+    #     cls = self.compiler.compile(node.callable)
+    #     assert isinstance(cls, Class)
+    #     args = self._stack.top(len(node.arguments))
+    #     constructors = cls.constructor.get_match(args, [], strict=True)
+    #     if not constructors:
+    #         constructors = cls.constructor.get_match(args, [])
+    #     if len(constructors) != 1:
+    #         raise ValueError
+    #     return [*result, vm.CreateInstance(constructors[0])]
+
+    # @_cpl
+    # def _(self, node: res.ResolvedFunctionCall):
+    #     return self.compiler.code_compiler.compile(node)
 
     @_cpl
-    @_cached
-    def _(self, node: resolved.ResolvedImport):
-        source = self.compile(resolved.Evaluate(node.source))
-        if not String.is_instance(source):
-            raise TypeError
+    def _(self, node: resolved.ResolvedParameter):
+        parameter = self.context.cache(node)
+        assert isinstance(parameter, Parameter)
+        self.stack.push_argument(parameter)
+        return [vm.LoadArgument(parameter)]
 
-        result = self.compiler.context.import_system.import_from(source.native)
+    @_cpl
+    def _(self, node: resolved.ResolvedReturn):
+        return [*(self.code_compiler.compile(node.expression) if node.expression else ()), vm.Return()]
 
-        for imported_name in node.imported_names:
-            self.cache(imported_name, result.get_name(imported_name.name))
+
+class CompilerDispatcher(StatefulProcessor):
+    _compilers: dict[type, CompilerBase]
+
+    def __init__(self, state: State):
+        super().__init__(state)
+
+        self._compilers = {}
+
+    def register_compiler(self, typ: Type[_T], compiler: CompilerBase[_T]):
+        if typ in self._compilers:
+            raise TypeError(f"Type '{typ}' is already registered")
+        self._compilers[typ] = compiler
+
+    def compile(self, node: resolved.ResolvedNode, item: _T) -> _T:
+        return self.dispatch(item).compile(node, item) or item
+
+    def dispatch(self, item: _T) -> CompilerBase[_T]:
+        return self._compilers[type(item)]
+
+    @classmethod
+    def standard(cls, compiler: "NodeCompiler"):
+        dispatcher = cls(compiler.state)
+
+        dispatcher.register_compiler(Function, compiler.function_compiler)
+        dispatcher.register_compiler(Parameter, compiler.function_compiler)
+        dispatcher.register_compiler(FunctionBody, compiler.function_compiler)
+
+        dispatcher.register_compiler(Method, compiler.class_compiler.method_compiler)
+        dispatcher.register_compiler(Class, compiler.class_compiler)
+        dispatcher.register_compiler(Field, compiler.class_compiler)
+
+        dispatcher.register_compiler(Module, compiler.module_compiler)
+
+        dispatcher.register_compiler(ImportResult, compiler.top_level_compiler)
+        dispatcher.register_compiler(OverloadGroup, compiler.top_level_compiler)
+
+        return dispatcher
 
 
 class NodeCompiler(StatefulProcessor):
-    _cache: dict[resolved.ResolvedNode, ObjectProtocol]
+    _dispatcher: CompilerDispatcher
 
     _vm: Interpreter
     _context: CompilerContext
 
     _top_level_compiler: TopLevelCompiler
-    _code_compiler: CodeCompiler
+    _expression_compiler: CodeCompiler
 
     _class_compiler: ClassCompiler
     _function_compiler: FunctionCompiler
     _module_compiler: ModuleCompiler
 
-    _compilation_context: CompilationContext
-
     def __init__(self, state: State, context: CompilationContext):
         super().__init__(state)
 
-        self._cache = {}
-
         self._vm = Interpreter()
-        self._context = CompilerContext()
+        self._context = CompilerContext(self)
 
+        self._expression_compiler = CodeCompiler(self)
         self._top_level_compiler = TopLevelCompiler(self)
-        self._code_compiler = CodeCompiler(self)
 
         self._class_compiler = ClassCompiler(self)
         self._function_compiler = FunctionCompiler(self)
         self._module_compiler = ModuleCompiler(self)
+
+        self._dispatcher = CompilerDispatcher.standard(self)
 
         self._compilation_context = context
 
@@ -735,7 +889,14 @@ class NodeCompiler(StatefulProcessor):
 
     @property
     def context(self):
-        # return self._context
+        return self._context
+
+    @property
+    def dispatcher(self):
+        return self._dispatcher
+
+    @property
+    def compilation_context(self):
         return self._compilation_context
 
     # region Sub-Compilers
@@ -745,8 +906,8 @@ class NodeCompiler(StatefulProcessor):
         return self._top_level_compiler
 
     @property
-    def code_compiler(self):
-        return self._code_compiler
+    def expression_compiler(self):
+        return self._expression_compiler
 
     @property
     def class_compiler(self):
@@ -762,14 +923,19 @@ class NodeCompiler(StatefulProcessor):
 
     # endregion Sub-Compilers
 
-    def cache(self, node: resolved.ResolvedNode, value: ObjectProtocol | IMiniZObject = _SENTINEL):
-        if value is _SENTINEL:
-            return self._cache[node]
-        if value is not None:
-            self._cache[node] = value
-        return value
+    def declare(self, nodes: list[resolved.ResolvedNode] | resolved.ResolvedNode) -> list[tuple[resolved.ResolvedNode, IMiniZObject]] | IMiniZObject:
+        if not isinstance(nodes, list):
+            return self.context.cache(nodes, self.top_level_compiler.construct(nodes))
 
-    def compile(self, nodes: list[resolved.ResolvedNode] | resolved.ResolvedNode) -> list[IMiniZObject] | IMiniZObject:
-        if isinstance(nodes, list):
-            return list(filter(bool, map(self.top_level_compiler.compile, nodes)))
-        return self.top_level_compiler.compile(nodes)
+        return list(map(lambda n: (n, self.declare(n)), nodes))
+
+    def define(self, pairs: list[tuple[resolved.ResolvedNode, IMiniZObject]] | tuple[resolved.ResolvedNode, IMiniZObject]) -> list[IMiniZObject] | IMiniZObject | None:
+        if not isinstance(pairs, list):
+            return self.dispatcher.compile(*pairs)
+
+        return list(map(lambda p: self.dispatcher.compile(*p), pairs))
+
+    def evaluate(self, expression: resolved.ResolvedExpression):
+        if expression is None:
+            return None
+        return self.vm.run(self.expression_compiler.compile_expression(expression)).pop(default=None)
