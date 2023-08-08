@@ -360,6 +360,10 @@ class CompileTimeDependencyFinder(DependencyFinder):
         ]
 
     @_dep
+    def _(self, node: resolved.ResolvedImport):
+        self.add(node, *self.dispatcher.code_finder.find_dependencies(node.source))
+
+    @_dep
     def _(self, node: resolved.ResolvedModule):
         self.add(node, *node.items)
 
@@ -369,6 +373,14 @@ class CompileTimeDependencyFinder(DependencyFinder):
             *self.find_dependencies(node.parent),
             *sum(map(self.find_dependencies, node.overloads), []),
         ]
+
+    @_dep
+    def _(self, node: resolved.ResolvedParameter):
+        with self.dispatcher.finder(self.dispatcher.typing_finder):
+            if node.type:
+                self.add(node, *self.dispatcher.code_finder.find_dependencies(node.type))
+            if node.initializer:
+                self.add(node, node.initializer)
 
     # endregion
 
