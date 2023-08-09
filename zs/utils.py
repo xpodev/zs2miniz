@@ -1,3 +1,7 @@
+def make_tuple(value):
+    return (value,) if value is not None else ()
+
+
 class SingletonMeta(type):
     _instances: dict[type, object] = {}
 

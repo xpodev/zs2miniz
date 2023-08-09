@@ -4,10 +4,7 @@ from functools import singledispatchmethod
 from zs.ast import resolved
 from zs.dependency_graph import DependencyGraph
 from zs.processing import StatefulProcessor, State
-
-
-def make_tuple(value):
-    return (value,) if value is not None else ()
+from zs.utils import make_tuple
 
 
 class DependencyFinder(StatefulProcessor):
