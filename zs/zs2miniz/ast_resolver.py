@@ -109,9 +109,11 @@ class NodeRegistry(_SubProcessor):
 
     @_reg
     def _(self, node: nodes.ExpressionStatement):
-        self.register(node.expression)
+        result = resolved.ResolvedExpressionStatement(node)
 
-        return resolved.ResolvedExpressionStatement(node)
+        result.expression = self.register(node.expression)
+
+        return result
 
     @_reg
     def _(self, node: nodes.Function):
@@ -312,6 +314,10 @@ class NodeResolver(_SubProcessor):
         with self.context.use_scope(node):
             node.bases = list(map(self.resolve, node.bases))
             node.items = list(map(self.resolve, node.items))
+
+    @_res
+    def _(self, node: resolved.ResolvedExpressionStatement):
+        node.expression = self.resolve(node.expression)
 
     @_res
     def _(self, node: resolved.ResolvedFunction):
