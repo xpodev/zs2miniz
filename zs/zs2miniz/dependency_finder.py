@@ -283,6 +283,10 @@ class CompileTimeDependencyFinder(DependencyFinder):
         return self.dispatcher.code_finder.find_dependencies(node)
 
     @_dep
+    def _(self, node: resolved.ResolvedStatement):
+        return self.dispatcher.code_finder.find_dependencies(node)
+
+    @_dep
     def _(self, node: resolved.ResolvedFunction):
         return [
             *self.find_dependencies(node.body),
@@ -291,7 +295,7 @@ class CompileTimeDependencyFinder(DependencyFinder):
     @_dep
     def _(self, node: resolved.ResolvedFunctionBody):
         return [
-            *self.dispatcher.runtime_finder.find_dependencies(node.owner),
+            *(self.dispatcher.runtime_finder.find_dependencies(node.owner) or ()),
             *sum(map(self.find_dependencies, node.instructions), [])
         ]
 
