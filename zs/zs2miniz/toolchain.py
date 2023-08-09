@@ -128,7 +128,11 @@ class Toolchain(StatefulProcessor):
                     nodes = []
                     for build in build_order:
                         for node in build:
-                            nodes.append((node, mapping.get(node, self.compiler.context.cache(node))))
+                            try:
+                                item = mapping[node]
+                            except KeyError:
+                                item = self.compiler.context.cache(node)
+                            nodes.append((node, item))
                     # here we need to declare all objects which are not explicitly owned by any node, so they
                     # were not declared when the AST was recursively walked over.
                     for node in self.resolver.context.injected_nodes:
