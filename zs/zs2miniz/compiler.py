@@ -52,21 +52,6 @@ class Cache:
         return item
 
 
-# def _cached(fn):
-#     @wraps(fn)
-#     def wrapper(self: "_SubCompiler", node: resolved.ResolvedNode, *args, **kwargs):
-#         try:
-#             return self.cache(node)
-#         except KeyError:
-#             return self.cache(node, fn(self, node, *args, **kwargs))
-#
-#     return wrapper
-#
-#
-# DECLARATION = Cache()
-# DEFINITION = Cache()
-
-
 class CompilerContext:
     _cache: Cache
     _built: set[resolved.ResolvedNode]
@@ -99,40 +84,6 @@ class CompilerContext:
         if item is None and result is not None:
             self.cache(node, result)
         return result or item
-
-
-# class _SubCompiler(StatefulProcessor):
-#     _compiler: "NodeCompiler"
-#
-#     def __init__(self, compiler: "NodeCompiler"):
-#         super().__init__(compiler.state)
-#         self._compiler = compiler
-#
-#     @property
-#     def compiler(self):
-#         return self._compiler
-#
-#     @property
-#     def context(self):
-#         return self.compiler.context
-#
-#     def cache(self, *args):
-#         return self.compiler.cache(*args)
-#
-#     def declare(self, node: resolved.ResolvedNode) -> IMiniZObject | None:
-#         return self.create_object(node)
-#
-#     def create_object(self, node: resolved.ResolvedNode) -> IMiniZObject | None:
-#         raise NotImplementedError(f"[{type(self).__name__}] Can't declare node of type \'{type(node).__name__}\'")
-#
-#     def compile(self, node: resolved.ResolvedNode):
-#         # return self.define(node, result := self.declare(node)) or result
-#         # if isinstance(node, resolved.ResolvedObject):
-#         #     return node.object
-#         return self._compile(node)
-#
-#     def _compile(self, node: resolved.ResolvedNode):
-#         raise NotImplementedError(f"[{type(self).__name__}] Can't compile node of type \'{type(node).__name__}\'")
 
 
 class CompilerBase(StatefulProcessor, Generic[_T]):
