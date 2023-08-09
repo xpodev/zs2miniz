@@ -4,7 +4,7 @@ This module defines the class that's responsible for compiling a function body f
 
 from contextlib import contextmanager
 from functools import singledispatchmethod
-from typing import TypeVar, Generic, Callable, TypeAlias, Type
+from typing import TypeVar, Generic, Type
 
 from miniz.concrete.function import FunctionBody, Function
 from miniz.concrete.module import Module
