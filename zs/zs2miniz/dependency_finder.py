@@ -181,7 +181,7 @@ class RuntimeDependencyFinder(DependencyFinder):
     @_dep
     def _(self, node: resolved.ResolvedClass):
         with self.dispatcher.finder(self.dispatcher.typing_finder):
-            self.add(node, *node.bases)
+            self.add(node, *sum(map(self.dispatcher.find, node.bases), []))
 
     @_dep
     def _(self, node: resolved.ResolvedExpression):
