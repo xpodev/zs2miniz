@@ -3,7 +3,7 @@ This module defines the class that's responsible for compiling a function body f
 """
 
 from contextlib import contextmanager
-from functools import singledispatchmethod, wraps
+from functools import singledispatchmethod
 from typing import TypeVar, Generic, Callable, TypeAlias, Type
 
 from miniz.concrete.function import FunctionBody, Function
@@ -17,7 +17,7 @@ from miniz.interfaces.function import IFunction, IFunctionSignature
 from miniz.interfaces.module import IModule
 from miniz.interfaces.oop import IClass, IField, Binding, IOOPMember, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition
 from miniz.interfaces.signature import IParameter
-from miniz.type_system import Any, is_type, assignable_to, Void, String
+from miniz.type_system import Any, assignable_to, Void, String
 from miniz.vm import instructions as vm
 from miniz.vm.instruction import Instruction
 from miniz.vm.runtime import Interpreter
@@ -25,6 +25,7 @@ from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
 from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
+
 
 _T = TypeVar("_T")
 _SENTINEL = object()
