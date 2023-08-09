@@ -31,9 +31,6 @@ _T = TypeVar("_T")
 _SENTINEL = object()
 
 
-DefinitionFunction: TypeAlias = Callable[[resolved.ResolvedNode, IMiniZObject | None], IMiniZObject | None]
-
-
 class Cache:
     _cache: dict[resolved.ResolvedNode, IMiniZObject]
 
