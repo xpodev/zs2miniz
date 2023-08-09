@@ -777,10 +777,10 @@ class CompilerDispatcher(StatefulProcessor):
 
         self._compilers = {}
 
-    def register_compiler(self, typ: Type[_T], compiler: CompilerBase[_T]):
-        if typ in self._compilers:
-            raise TypeError(f"Type '{typ}' is already registered")
-        self._compilers[typ] = compiler
+    def register_compiler(self, cls: Type[_T], compiler: CompilerBase[_T]):
+        if cls in self._compilers:
+            raise TypeError(f"Type '{cls}' is already registered")
+        self._compilers[cls] = compiler
 
     def compile(self, node: resolved.ResolvedNode, item: _T) -> _T:
         return self.dispatch(item).compile(node, item) or item
