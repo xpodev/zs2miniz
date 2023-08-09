@@ -11,7 +11,7 @@ from miniz.concrete.module import Module
 from miniz.concrete.oop import Class, Field, Method
 from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
-from miniz.core import ImplementsType, ObjectProtocol
+from miniz.core import TypeProtocol, ObjectProtocol
 from miniz.interfaces.base import IMiniZObject, ScopeProtocol
 from miniz.interfaces.function import IFunction, IFunctionSignature
 from miniz.interfaces.module import IModule
@@ -359,7 +359,7 @@ class CodeContext:
 
 class CodeCompiler:
     class StackTypeChecker:
-        _stack: list[ImplementsType]
+        _stack: list[TypeProtocol]
 
         def __init__(self):
             self._stack = []
@@ -368,13 +368,13 @@ class CodeCompiler:
         def size(self):
             return len(self._stack)
 
-        def _push(self, tp: ImplementsType):
+        def _push(self, tp: TypeProtocol):
             self._stack.append(tp)
 
         def _pop(self):
             return self._stack.pop()
 
-        def push_type(self, tp: ImplementsType):
+        def push_type(self, tp: TypeProtocol):
             self._push(tp)
 
         def push_object(self, obj: ObjectProtocol):
@@ -410,7 +410,7 @@ class CodeCompiler:
         def pop(self):
             return self._pop()
 
-        def reset(self, state: list[ImplementsType] = None):
+        def reset(self, state: list[TypeProtocol] = None):
             state, self._stack = self._stack, state if state is not None else []
             return state
 
@@ -573,7 +573,7 @@ class CodeCompiler:
         member = tp.get_name(node.member_name)
 
         if isinstance(member, IOOPMember):
-            assert isinstance(tp, ImplementsType)
+            assert isinstance(tp, TypeProtocol)
             match member.binding:
                 case Binding.Instance:
                     if not assignable_to(tp, member.owner):
