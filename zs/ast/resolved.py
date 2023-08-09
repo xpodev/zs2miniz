@@ -154,7 +154,7 @@ class ResolvedObject(ResolvedExpression[None], Generic[_T]):
         self.object = obj
 
 
-class ResolvedOverloadGroup(ResolvedNode[None]):
+class ResolvedOverloadGroup(ResolvedExpression[None]):
     def __init__(self, name: str, parent: "ResolvedFunctionGroup | None"):
         super().__init__(None)
         self.name = name
