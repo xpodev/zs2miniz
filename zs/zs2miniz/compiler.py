@@ -551,6 +551,10 @@ class CodeCompiler:
         return [vm.LoadObject(cls)]
 
     @_cpl
+    def _(self, node: resolved.ResolvedExpressionStatement):
+        return self.compile(node.expression)
+
+    @_cpl
     def _(self, node: resolved.ResolvedFunctionCall):
         result = []
 

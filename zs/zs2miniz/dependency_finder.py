@@ -380,6 +380,11 @@ class CodeDependencyFinder(DependencyFinder):
     # region Implementation
 
     @_dep
+    def _(self, node: resolved.ResolvedExpressionStatement):
+        return [
+            *self.find_dependencies(node.expression),
+        ]
+    @_dep
     def _(self, node: resolved.ResolvedFunctionCall):
         return [
             *self.find_dependencies(node.callable),
