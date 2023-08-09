@@ -254,10 +254,11 @@ class FunctionCompiler(CompilerBase[IFunction]):
 
     @_cpl
     def _(self, node: resolved.ResolvedFunction, item: Function) -> None:
-        if node.return_type is None:
-            item.signature.return_type = Any  # todo: infer
-        else:
-            item.signature.return_type = self.compiler.evaluate(node.return_type)
+        with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
+            if node.return_type is None:
+                item.signature.return_type = Any  # todo: infer
+            else:
+                item.signature.return_type = self.compiler.evaluate(node.return_type)
 
     @_cpl
     def _(self, node: resolved.ResolvedFunctionBody, item: FunctionBody):
