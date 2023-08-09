@@ -8,9 +8,10 @@ from zs.text.file_info import DocumentInfo, SourceFile
 from zs.text.parser import Parser
 from zs.text.token_stream import TokenStream
 from zs.text.tokenizer import Tokenizer
+from zs.zs2miniz.ast_flattener import ASTFlattener
 from zs.zs2miniz.ast_resolver import NodeProcessor
 from zs.zs2miniz.compiler import NodeCompiler
-from zs.zs2miniz.dependency_finder import DependencyFinderDispatcher, DependencyFinder_Old, DependencyGraph
+from zs.zs2miniz.dependency_finder import DependencyFinderDispatcher, DependencyGraph
 from zs.zs2miniz.lib import CompilationContext
 
 if typing.TYPE_CHECKING:
@@ -110,7 +111,7 @@ class Toolchain(StatefulProcessor):
                 if document.build_order is None:
                     dependency_finder = DependencyFinderDispatcher(self.state)
                     nodes = self.execute_document(info, result=ToolchainResult.ResolvedAST)
-                    nodes = sum((DependencyFinder_Old(state=self.state).flatten_tree(node) for node in nodes), nodes)
+                    nodes = sum(map(ASTFlattener(self.state).flatten_tree, nodes), [])
                     graph = DependencyGraph()
                     with dependency_finder.finder(dependency_finder.runtime_finder), dependency_finder.graph(graph):
                         # document.build_order = DependencyGraph.from_list(

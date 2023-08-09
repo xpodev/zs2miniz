@@ -6,67 +6,6 @@ from zs.dependency_graph import DependencyGraph
 from zs.processing import StatefulProcessor, State
 
 
-class DependencyFinder_Old(StatefulProcessor):
-    def __init__(self, *, state: State):
-        super().__init__(state)
-
-    # region Flatten
-
-    def flatten_tree(self, node: resolved.ResolvedNode) -> list[resolved.ResolvedNode]:
-        return self._flatten_tree(node)
-
-    @singledispatchmethod
-    def _flatten_tree(self, node: resolved.ResolvedNode):
-        # return []
-        raise NotImplementedError(f"Can't flatten node of type \'{type(node)}\' because it is not implemented yet")
-
-    _flt = _flatten_tree.register
-
-    @_flt
-    def _(self, node: resolved.ResolvedImport):
-        return []
-
-    @_flt
-    def _(self, node: resolved.ResolvedModule):
-        return [
-            *node.items,
-            *sum(map(self.flatten_tree, node.items), [])
-        ]
-
-    @_flt
-    def _(self, node: resolved.ResolvedClass):
-        return [
-            *node.items,
-        ]
-
-    @_flt
-    def _(self, node: resolved.ResolvedMemberAccess):
-        return []
-
-    @_flt
-    def _(self, node: resolved.ResolvedFunction):
-        return [
-            *node.positional_parameters,
-            *node.named_parameters,
-            *make_tuple(node.variadic_positional_parameter),
-            *make_tuple(node.variadic_named_parameter),
-            node.body,
-        ]
-
-    @_flt
-    def _(self, node: resolved.ResolvedOverloadGroup):
-        return [
-            *node.overloads,
-            node.parent
-        ]
-
-    @_flt
-    def _(self, _: resolved.ResolvedObject):
-        return []
-
-    # endregion
-
-
 def make_tuple(value):
     return (value,) if value is not None else ()
 
