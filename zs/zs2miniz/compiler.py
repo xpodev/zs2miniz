@@ -12,9 +12,6 @@ from miniz.concrete.oop import Class, Field, Method
 from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
 from miniz.core import ImplementsType, ObjectProtocol
-from miniz.generic.function import GenericFunction
-from miniz.generic.generic_construction import IConstructor
-from miniz.generic.signature import GenericParameter
 from miniz.interfaces.base import IMiniZObject, ScopeProtocol
 from miniz.interfaces.function import IFunction, IFunctionSignature
 from miniz.interfaces.module import IModule
@@ -26,7 +23,6 @@ from miniz.vm.instruction import Instruction
 from miniz.vm.runtime import Interpreter
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
-from zs.zs2miniz.errors import CompilerNotAvailableError
 from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
 
