@@ -362,6 +362,7 @@ class CodeDependencyFinder(DependencyFinder):
     def find_dependencies(self, node: resolved.ResolvedNode) -> list[resolved.ResolvedNode]:
         if any(isinstance(node, cls) for cls in {
             resolved.ResolvedClass,
+            resolved.ResolvedFunction,
             resolved.ResolvedParameter,
             resolved.ResolvedImport,
         }):
@@ -384,6 +385,7 @@ class CodeDependencyFinder(DependencyFinder):
         return [
             *self.find_dependencies(node.expression),
         ]
+
     @_dep
     def _(self, node: resolved.ResolvedFunctionCall):
         return [
@@ -399,6 +401,13 @@ class CodeDependencyFinder(DependencyFinder):
     @_dep
     def _(self, node: resolved.ResolvedMemberAccess):
         return self.find_dependencies(node.object)
+
+    @_dep
+    def _(self, node: resolved.ResolvedOverloadGroup):
+        return [
+            *(self.find_dependencies(node.parent) if node.parent is not None else ()),
+            *sum(map(self.find_dependencies, node.overloads), [])
+        ]
 
     @_dep
     def _(self, node: resolved.ResolvedReturn):
