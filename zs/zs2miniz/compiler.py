@@ -739,28 +739,6 @@ class FunctionBodyCompiler(CodeContext):
 
     _cpl = _compile.register
 
-    # @_cpl
-    # def _(self, node: res.ResolvedClassCall):
-    #     result = []
-    #
-    #     for arg in node.arguments:
-    #         result.extend(self.compile(arg))
-    #     # todo: named args
-    #     # todo: find suitable constructor
-    #     cls = self.compiler.compile(node.callable)
-    #     assert isinstance(cls, Class)
-    #     args = self._stack.top(len(node.arguments))
-    #     constructors = cls.constructor.get_match(args, [], strict=True)
-    #     if not constructors:
-    #         constructors = cls.constructor.get_match(args, [])
-    #     if len(constructors) != 1:
-    #         raise ValueError
-    #     return [*result, vm.CreateInstance(constructors[0])]
-
-    # @_cpl
-    # def _(self, node: res.ResolvedFunctionCall):
-    #     return self.compiler.code_compiler.compile(node)
-
     @_cpl
     def _(self, node: resolved.ResolvedParameter):
         parameter = self.context.cache(node)
@@ -783,38 +761,12 @@ class FunctionSignatureCompiler(CodeContext):
 
     _cpl = _compile.register
 
-    # @_cpl
-    # def _(self, node: res.ResolvedClassCall):
-    #     result = []
-    #
-    #     for arg in node.arguments:
-    #         result.extend(self.compile(arg))
-    #     # todo: named args
-    #     # todo: find suitable constructor
-    #     cls = self.compiler.compile(node.callable)
-    #     assert isinstance(cls, Class)
-    #     args = self._stack.top(len(node.arguments))
-    #     constructors = cls.constructor.get_match(args, [], strict=True)
-    #     if not constructors:
-    #         constructors = cls.constructor.get_match(args, [])
-    #     if len(constructors) != 1:
-    #         raise ValueError
-    #     return [*result, vm.CreateInstance(constructors[0])]
-
-    # @_cpl
-    # def _(self, node: res.ResolvedFunctionCall):
-    #     return self.compiler.code_compiler.compile(node)
-
     @_cpl
     def _(self, node: resolved.ResolvedParameter):
         parameter = self.context.cache(node)
         assert isinstance(parameter, Parameter)
         self.stack.push_type(parameter.parameter_type)
         return [vm.LoadObject(parameter)]
-
-    @_cpl
-    def _(self, node: resolved.ResolvedReturn):
-        return [*(self.code_compiler.compile(node.expression) if node.expression else ()), vm.Return()]
 
 
 class CompilerDispatcher(StatefulProcessor):
