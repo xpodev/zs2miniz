@@ -55,6 +55,20 @@ class Scope(typing.Generic[_T]):
     def defined_names(self):
         return list(self._definitions.items())
 
+    @property
+    def referred_items(self):
+        return [
+            self._items[name] for name in self._items
+            if name not in self._definitions
+        ]
+
+    @property
+    def referred_names(self):
+        return list({
+            name: self._items[name] for name in self._items
+            if name not in self._definitions
+        }.items())
+
     def _assert_name_unused(self, name: str):
         if name in self._items:
             raise ValueError(f"Name '{name}' is already bound to an object '{self._items[name]}' in scope {self}")

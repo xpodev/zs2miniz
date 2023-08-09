@@ -136,6 +136,8 @@ class Toolchain(StatefulProcessor):
                     document.objects = self.compiler.define(nodes)
                     for name, item in self.resolver.context.current_scope.defined_names:
                         document.object_scope.create_name(name, self.compiler.context.cache(item))
+                    for name, item in self.resolver.context.current_scope.referred_names:
+                        document.object_scope.refer_name(name, self.compiler.context.cache(item))
                 return document.objects
             case ToolchainResult.DocumentContext:
                 self.execute_document(info, result=ToolchainResult.MiniZObjects)
