@@ -132,6 +132,13 @@ class NodeRegistry(_SubProcessor):
             group.overloads.append(result)
 
         with self.context.create_scope(result):
+            if node.generic_parameters is not None:
+                result.generic_parameters = []
+                for parameter in node.generic_parameters:
+                    generic = resolved.ResolvedGenericParameter(parameter)
+                    self.context.current_scope.create_name(parameter.name, generic)
+                    result.generic_parameters.append(generic)
+
             for parameter in node.positional_parameters:
                 result.positional_parameters.append(self.register(parameter))
 

@@ -207,6 +207,10 @@ class RuntimeDependencyFinder(DependencyFinder):
             self.add(node, *sum(map(self.dispatcher.find, node.instructions), []))
 
     @_dep
+    def _(self, _: resolved.ResolvedGenericParameter):
+        return
+
+    @_dep
     def _(self, node: resolved.ResolvedImport):
         self.add(node, *self.dispatcher.code_finder.find_dependencies(node.source))
 
@@ -300,6 +304,10 @@ class CompileTimeDependencyFinder(DependencyFinder):
         ]
 
     @_dep
+    def _(self, _: resolved.ResolvedGenericParameter):
+        return
+
+    @_dep
     def _(self, node: resolved.ResolvedImport):
         self.add(node, *self.dispatcher.code_finder.find_dependencies(node.source))
 
@@ -367,8 +375,10 @@ class CodeDependencyFinder(DependencyFinder):
         if any(isinstance(node, cls) for cls in {
             resolved.ResolvedClass,
             resolved.ResolvedFunction,
+            resolved.ResolvedGenericParameter,
             resolved.ResolvedParameter,
             resolved.ResolvedImport,
+            resolved.ResolvedVar
         }):
             result = self.dispatcher.find(node)
             if result is None:

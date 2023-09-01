@@ -1,3 +1,5 @@
+import { Void as void } from "module:core";
+
 import { hello } from "test2.zs";
 import { a, A } from hello();
 import { Void, Boolean as bool } from hello("module:core");
@@ -37,5 +39,9 @@ module Test {
 
     import { Type as type } from "module:core";
 
-    //fun generic(value: T, { T: type } ): T;
+    fun generic[T](value: T): T { return value; }
+
+    fun blah(x: Foo) {
+        return generic[Foo](x);
+    }
 }

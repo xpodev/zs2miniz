@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Iterable
 
-from zs.ctrt.protocols import ObjectProtocol, TypeProtocol
+from miniz.core import ObjectProtocol, TypeProtocol
 from miniz.interfaces.base import ScopeProtocol
 from zs.zs2miniz.import_system import Importer, ImportSystem
 from zs.zs2miniz.lib import DocumentContext

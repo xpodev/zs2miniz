@@ -344,6 +344,21 @@ def parse_function(parser: Parser) -> Function:
 
     name = _one_of(_identifier, _string)(parser, default=None)
 
+    generic_parameters = None
+    _left_square_bracket = _right_square_bracket = None
+
+    if parser.token('['):
+        generic_parameters = []
+        _left_square_bracket = parser.eat('[')
+
+        while not parser.token(']'):
+            generic_parameters.append(_identifier(parser))
+
+            if not parser.token(',', eat=True):
+                break
+
+        _right_square_bracket = parser.eat(']')
+
     positional_parameters = []
     named_parameters = []
 
@@ -402,6 +417,9 @@ def parse_function(parser: Parser) -> Function:
     return Function(
         keyword,
         name,
+        _left_square_bracket,
+        generic_parameters,
+        _right_square_bracket,
         _left_parenthesis,
         positional_parameters,
         named_parameters,
@@ -585,49 +603,46 @@ def parse_infix(parser: Parser, left: Expression) -> Binary:
     ...
 
 
-def parse_function_call(parser: Parser, left: Expression) -> FunctionCall:
-    _left_parenthesis = parser.eat('(')
-
+def parse_argument_list(parser: Parser, terminator: str | TokenType):
     arguments = []
     keyword_arguments = {}
 
-    while not parser.token(')'):
+    while not parser.token(terminator):
         if parser.token(TokenType.Identifier):
-            expr = parser.eat(TokenType.Identifier)
-            if parser.token(':', eat=True):
-                name: str = expr.value
-                expr = parser.next("Expression")
-                assert isinstance(expr, Expression)
-                keyword_arguments[name] = expr
-                continue
-            else:
-                expr = Identifier(expr)
-        else:
-            expr = parser.next("Expression")
+            with parser.stream.save_position() as pos:
+                expr = parser.eat(TokenType.Identifier)
+                if parser.token(':', eat=True):
+                    name: str = expr.value
+                    expr = parser.next("Expression")
+                    assert isinstance(expr, Expression)
+                    keyword_arguments[name] = expr
+                    pos.commit()
+                    continue
+        expr = parser.next("Expression")
         arguments.append(expr)
 
         if not parser.token(',', eat=True):
             break
 
-    _right_parenthesis = parser.eat(')')
-
-    return FunctionCall(left, _left_parenthesis, arguments, keyword_arguments, _right_parenthesis)
+    return arguments, keyword_arguments
 
 
-def parse_partial_call(parser: Parser, left: Expression) -> FunctionCall:
-    _left_parenthesis = parser.eat('{')
+def parse_call(left_bracket: str | TokenType, right_bracket: str | TokenType):
+    def wrapper(parser: Parser, left: Expression) -> FunctionCall:
+        _left_bracket = parser.eat(left_bracket)
 
-    arguments = []
+        arguments, keyword_arguments = parse_argument_list(parser, right_bracket)
 
-    while not parser.token('}'):
-        arguments.append(parser.next("Expression"))
+        _right_bracket = parser.eat(right_bracket)
 
-        if not parser.token(',', eat=True):
-            break
+        return FunctionCall(left, _left_bracket, arguments, keyword_arguments, _right_bracket)
 
-    _right_parenthesis = parser.eat('}')
+    return wrapper
 
-    return FunctionCall(left, _left_parenthesis, arguments, _right_parenthesis)
+
+parse_curvy_call = parse_call('(', ')')
+parse_square_call = parse_call('[', ']')
+parse_curly_call = parse_call('{', '}')
 
 
 def parse_member_access(parser: Parser, left: Expression) -> MemberAccess:
@@ -804,7 +819,13 @@ class ExpressionParser(ContextualParser[Expression]):
         self.add_parser(copy_with(_real, binding_power=0))
 
         self.add_parser(SubParser(
-            100, '(', led=parse_function_call, nud=parse_parenthesised_expression_or_tuple
+            100, '(', led=parse_curvy_call, nud=parse_parenthesised_expression_or_tuple
+        ))
+        self.add_parser(SubParser(
+            100, '[', led=parse_square_call
+        ))
+        self.add_parser(SubParser(
+            100, '{', led=parse_curly_call
         ))
         self.add_parser(SubParser(
             120, '.', led=parse_member_access
