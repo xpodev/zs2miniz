@@ -4,28 +4,36 @@ This module defines the class that's responsible for compiling a function body f
 
 from contextlib import contextmanager
 from functools import singledispatchmethod
-from typing import TypeVar, Generic, Callable, TypeAlias, Type
+from typing import TypeVar, Generic, Type
 
-from miniz.concrete.function import FunctionBody, Function
+from miniz.interfaces.overloading import Argument
+from utilz.analysis import CodeAnalyzer
+from utilz.analysis.analyzers import ResultTypeAnalyzer
+from miniz.concrete.function import FunctionBody, Function, Local
 from miniz.concrete.module import Module
-from miniz.concrete.oop import Class, Field, Method
+from miniz.concrete.oop import Class, Field, Method, MethodBody
 from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
-from miniz.core import TypeProtocol, ObjectProtocol
+from miniz.core import TypeProtocol
+from miniz.generic import GenericSignature, GenericParameter
 from miniz.interfaces.base import IMiniZObject, ScopeProtocol
-from miniz.interfaces.function import IFunction, IFunctionSignature
+from miniz.interfaces.function import IFunction
 from miniz.interfaces.module import IModule
-from miniz.interfaces.oop import IClass, IField, Binding, IOOPMember, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition
-from miniz.interfaces.signature import IParameter
-from miniz.type_system import Any, assignable_to, Void, String
+from miniz.interfaces.oop import IClass, IField, Binding, IOOPMemberDefinition, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition
+from miniz.type_system import Any, assignable_to, String
 from miniz.vm import instructions as vm
 from miniz.vm.instruction import Instruction
 from miniz.vm.runtime import Interpreter
+from miniz.vm.type_stack import TypeStack
+from utilz.analysis.analyzers.return_type_analyzer import ReturnTypeAnalyzer
+from utilz.callable import ICallable
+from utilz.code_generation.core import CodeGenerationResult
+from utilz.code_generation.interfaces import BoundMemberCode
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
+from zs.zs2miniz.errors import CodeCompilationError
 from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
-
 
 _T = TypeVar("_T")
 _SENTINEL = object()
@@ -170,26 +178,50 @@ class FunctionCompiler(CompilerBase[IFunction]):
     def construct(self, node: resolved.ResolvedFunction) -> Function:
         fn = Function(node.name)
 
+        if isinstance(node.node.name, resolved.Literal):
+            self.compiler.add_operator_function(fn.name, fn)
+
         self.construct_parameters(node, fn)
 
         self.context.cache(node.body, fn.body)
 
+        new_body = []
+
+        for item in node.body.instructions:
+            if isinstance(item, resolved.ResolvedVar):
+                self.construct_local(item, fn)
+            else:
+                new_body.append(item)
+
+        node.body.instructions = new_body
+
         return fn
+
+    def construct_local(self, node: resolved.ResolvedVar, fn: Function):
+        local = self.context.cache(node, Local(node.name, Any))
+
+        fn.locals.append(local)
 
     def construct_parameters(self, node: resolved.ResolvedFunction, fn: Function):
         sig = fn.signature
 
+        if node.generic_parameters is not None:
+            fn.generic_signature = GenericSignature()
+
+            for parameter in node.generic_parameters:
+                fn.generic_signature.positional_parameters.append(self.context.cache(parameter, GenericParameter(parameter.name)))
+
         for parameter in node.positional_parameters:
-            sig.positional_parameters.append(self.context.cache(parameter, self.create_parameter(parameter)))
+            sig.positional_parameters.append(self.context.cache(parameter, Parameter(parameter.name)))
 
         for parameter in node.named_parameters:
-            sig.named_parameters.append(self.context.cache(parameter, self.create_parameter(parameter)))
+            sig.named_parameters.append(self.context.cache(parameter, Parameter(parameter.name)))
 
         if node.variadic_positional_parameter:
-            sig.variadic_positional_parameter = self.context.cache(node.variadic_positional_parameter, self.create_parameter(node.variadic_positional_parameter))
+            sig.variadic_positional_parameter = self.context.cache(node.variadic_positional_parameter, Parameter(node.variadic_positional_parameter.name))
 
         if node.variadic_named_parameter:
-            sig.variadic_named_parameter = self.context.cache(node.variadic_positional_parameter, self.create_parameter(node.variadic_named_parameter))
+            sig.variadic_named_parameter = self.context.cache(node.variadic_positional_parameter, Parameter(node.variadic_named_parameter.name))
 
     @singledispatchmethod
     def compile(self, node: resolved.ResolvedFunction, item: IMiniZObject):
@@ -200,10 +232,10 @@ class FunctionCompiler(CompilerBase[IFunction]):
     @_cpl
     def _(self, node: resolved.ResolvedFunction, item: Function) -> None:
         with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
-            if node.return_type is None:
-                item.signature.return_type = Any  # todo: infer
-            else:
+            if node.return_type is not None:
                 item.signature.return_type = self.compiler.evaluate(node.return_type)
+            if item.return_type is None:
+                item.signature.return_type = Any
 
     @_cpl
     def _(self, node: resolved.ResolvedFunctionBody, item: FunctionBody):
@@ -214,8 +246,18 @@ class FunctionCompiler(CompilerBase[IFunction]):
                 body = self.compiler.expression_compiler.compile_code(node.instructions)
                 for instruction in body:
                     item.instructions.append(instruction)
+
+                if node.owner.return_type is None:
+                    possible_types = ReturnTypeAnalyzer.quick_analysis(body, {}).possible_return_types
+                    if len(possible_types) != 1:
+                        raise CodeCompilationError(f"Can't currently handle more than 1 path in a function", node.owner.node.return_type)
+                    item.owner.signature.return_type = possible_types[0]
             else:
                 del item.instructions
+
+    @_cpl
+    def _(self, node: resolved.ResolvedGenericParameter, item: GenericParameter):
+        ...
 
     @_cpl
     def _(self, node: resolved.ResolvedParameter, item: Parameter):
@@ -225,26 +267,79 @@ class FunctionCompiler(CompilerBase[IFunction]):
             else:
                 item.parameter_type = Any
 
-    def create_parameter(self, node: resolved.ResolvedParameter):
-        # parameter_type = self.compiler.evaluate(node.type) if node.type else Any
-        # if is_type(parameter_type) and not isinstance(parameter_type, IConstructor):
-        #     factory = Parameter
-        # else:
-        #     factory = GenericParameter
-        # return factory(node.name, parameter_type)
-        # todo: get dependencies to check if we need to create a generic parameter instead
-        return Parameter(node.name)
+    @_cpl
+    def _(self, node: resolved.ResolvedVar, item: Local):
+        with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
+            if node.type:
+                item.target_type = self.compiler.evaluate(node.type)
+            else:
+                item.target_type = Any
+        with self.compiler.expression_compiler.code_context(self._function_body_compiler):
+            if node.initializer:
+                init = self.compiler.expression_compiler.compile_expression(node.initializer)
+                item.owner.body.instructions.extend([*init, vm.SetLocal(item)])
+
+                if node.type is None:
+                    item.target_type = ResultTypeAnalyzer.quick_analysis(init, {}).result_type
 
 
 class MethodCompiler(FunctionCompiler):
+    _method_body_compiler: "MethodBodyCompiler"
+
+    def __init__(self, compiler: "NodeCompiler"):
+        super().__init__(compiler)
+
+        self._method_body_compiler = MethodBodyCompiler(compiler)
+
+    @property
+    def method_body_compiler(self):
+        return self._method_body_compiler
+
     def construct(self, node: resolved.ResolvedFunction) -> Method:
         fn = Method(node.name)
+
+        if isinstance(node.node.name, resolved.Literal):
+            self.compiler.add_operator_function(fn.name, fn)
 
         self.construct_parameters(node, fn)
 
         self.context.cache(node.body, fn.body)
 
+        new_body = []
+
+        for item in node.body.instructions:
+            if isinstance(item, resolved.ResolvedVar):
+                self.construct_local(item, fn)
+            else:
+                new_body.append(item)
+
+        node.body.instructions = new_body
+
         return fn
+
+    @singledispatchmethod
+    def compile(self, node: resolved.ResolvedFunction, item: IMiniZObject):
+        super().compile(node, item)
+
+    _cpl = compile.register
+
+    @_cpl
+    def _(self, node: resolved.ResolvedFunctionBody, item: FunctionBody):
+        with self.compiler.expression_compiler.code_context(self._method_body_compiler):
+            if node is not None:
+                self.context.mark_defined(node)
+
+                body = self.compiler.expression_compiler.compile_code(node.instructions)
+                for instruction in body:
+                    item.instructions.append(instruction)
+
+                if node.owner.return_type is None:
+                    possible_types = ReturnTypeAnalyzer.quick_analysis(body, {}).possible_return_types
+                    if len(possible_types) != 1:
+                        raise CodeCompilationError(f"Can't currently handle more than 1 path in a function", node.owner.node.return_type)
+                    item.owner.signature.return_type = possible_types[0]
+            else:
+                del item.instructions
 
 
 class ClassCompiler(CompilerBase[Class]):
@@ -356,73 +451,7 @@ class CodeContext:
 
 
 class CodeCompiler:
-    class StackTypeChecker:
-        _stack: list[TypeProtocol]
-
-        def __init__(self):
-            self._stack = []
-
-        @property
-        def size(self):
-            return len(self._stack)
-
-        def _push(self, tp: TypeProtocol):
-            self._stack.append(tp)
-
-        def _pop(self):
-            return self._stack.pop()
-
-        def push_type(self, tp: TypeProtocol):
-            self._push(tp)
-
-        def push_object(self, obj: ObjectProtocol):
-            self._push(obj.runtime_type)
-
-        def push_argument(self, p: IParameter):
-            self._push(p.parameter_type)
-
-        def push_field(self, f: IField):
-            self._push(f.field_type)
-
-        def apply_function(self, fn: IFunctionSignature):
-            if len(self._stack) < len(fn.parameters):
-                raise TypeError
-
-            _cache = []
-
-            for parameter in reversed(fn.parameters):
-                tp = self._pop()
-                _cache.append(tp)
-
-                if not assignable_to(tp, parameter.parameter_type):
-                    break
-            else:
-                if fn.return_type is not Void:
-                    self._push(fn.return_type)
-
-                return
-
-            for tp in reversed(_cache):
-                self._push(tp)
-
-        def pop(self):
-            return self._pop()
-
-        def reset(self, state: list[TypeProtocol] = None):
-            state, self._stack = self._stack, state if state is not None else []
-            return state
-
-        def top(self, n: int = 1):
-            if not n:
-                return []
-            if len(self._stack) < n:
-                raise IndexError
-            return self._stack[-n:]
-
-        def __repr__(self):
-            return repr(self._stack)
-
-    _stack: StackTypeChecker
+    _stack: TypeStack
 
     _code_context_stack: list[CodeContext]
 
@@ -431,7 +460,7 @@ class CodeCompiler:
     def __init__(self, compiler: "NodeCompiler"):
         self._compiler = compiler
 
-        self._stack = self.StackTypeChecker()
+        self._stack = TypeStack()
 
         self._code_context_stack = [TopLevelCodeCompiler(self)]
 
@@ -468,7 +497,10 @@ class CodeCompiler:
         result = []
 
         for item in code:
-            result.extend(self.compile(item) or ())
+            code_result = self.compile(item)
+            if isinstance(code_result, CodeGenerationResult):
+                code_result = code_result.code
+            result.extend(code_result)
 
         return result
 
@@ -491,6 +523,26 @@ class CodeCompiler:
     _cpl = _compile.register
 
     @_cpl
+    def _(self, node: resolved.ResolvedBinary):
+        group = self.compiler.get_operator_function(f"_{node.operator}_")
+
+        left = self.compile_expression(node.left)
+        right = self.compile_expression(node.right)
+
+        _context = {}
+
+        args = [
+            Argument(left, ResultTypeAnalyzer.quick_analysis(left, _context).result_type),
+            Argument(right, ResultTypeAnalyzer.quick_analysis(right, _context).result_type),
+        ]
+
+        del _context
+
+        assert isinstance(group.runtime_type, ICallable)
+
+        return group.runtime_type.curvy_call(self.compiler, group, args, [])
+
+    @_cpl
     def _(self, node: resolved.ResolvedClass):
         cls = self.context.cache(node)
         self._stack.push_object(cls)
@@ -498,57 +550,62 @@ class CodeCompiler:
 
     @_cpl
     def _(self, node: resolved.ResolvedExpressionStatement):
-        return self.compile(node.expression)
+        try:
+            return self.compile(node.expression)
+        except CodeCompilationError as e:
+            self.compiler.state.error(e.message, e.node)
+            return ()
 
     @_cpl
     def _(self, node: resolved.ResolvedFunctionCall):
-        result = []
+        if node.operator not in {"()", "{}", "[]"}:
+            raise CodeCompilationError(f"Call operator '{node.operator}' is invalid.", node.node)
 
-        fact = vm.Call
+        code_analyzer = CodeAnalyzer()
+        code_analyzer.add_analyzer(ResultTypeAnalyzer())
 
-        group = self.compiler.evaluate(node.callable)
-        if isinstance(group, IClass):
-            self.stack.push_type(group)
+        args: list[Argument] = []
+        kwargs: dict[str, Argument] = {}
+
+        _context = {}
 
         for arg in node.arguments:
-            result.extend(self.compile(arg))
+            arg_result = code_analyzer.analyze(self.compile_expression(arg), _context)
+            args.append(Argument(
+                arg_result.code,
+                arg_result.additional_information[ResultTypeAnalyzer].result_type
+            ))
 
-        args = self.stack.top(len(node.arguments))
+        for kw, arg in node.keyword_arguments.items():
+            arg_result = code_analyzer.analyze(self.compile_expression(arg), _context)
+            kwargs[kw] = Argument(
+                arg_result.code,
+                arg_result.additional_information[ResultTypeAnalyzer].result_type
+            )
 
-        kwargs = {}
-        kwarg_types = []
+        callable_result = code_analyzer.analyze(self.compile_expression(node.callable), _context)
+        callable_type: TypeProtocol = callable_result.additional_information[ResultTypeAnalyzer].result_type
 
-        for name, arg in node.keyword_arguments.items():
-            code = self.compile(arg)
-            kwargs[name] = code
-            kwarg_types.append((name, self.stack.top()[0]))
+        del _context
 
-        if isinstance(group, IClass):
-            args.insert(0, group)
-            group = group.constructor
-            fact = vm.CreateInstance
+        if not isinstance(callable_type, ICallable):
+            raise CodeCompilationError(f"Object of type '{callable_type}' is not callable", node.node)
 
-        if isinstance(group, IFunction):
-            fn = group
-        elif isinstance(group, OverloadGroup):
-            overloads = group.get_match(args, kwarg_types, strict=True)
-
-            if not overloads:
-                overloads = group.get_match(args, kwarg_types, recursive=True)
-
-            if len(overloads) != 1:
-                raise ValueError("can't find suitable overload")
-
-            fn = overloads[0]
+        # todo: let the callable handle resolve. pass code directly instead
+        top = callable_result.code[-1]
+        if isinstance(top, vm.LoadObject):
+            item = top.object
         else:
-            raise TypeError(type(group))
+            item = callable_result.code
+        kwargs_pairs = [(key, value) for key, value in kwargs.items()]
+        if node.operator == "()":
+            result = callable_type.curvy_call(self.compiler, item, args, kwargs_pairs)
+        elif node.operator == "[]":
+            result = callable_type.square_call(self.compiler, item, args, kwargs_pairs)
+        else:
+            raise CodeCompilationError(f"Invalid call operator: '{node.operator}'", node.node)
 
-        for parameter in fn.signature.named_parameters:
-            result.extend(kwargs[parameter.name])
-
-        self.stack.apply_function(fn.signature)
-
-        return [*result, fact(fn)]
+        return result
 
     @_cpl
     def _(self, node: resolved.ResolvedImport):
@@ -562,15 +619,15 @@ class CodeCompiler:
 
     @_cpl
     def _(self, node: resolved.ResolvedMemberAccess):
-        result = self.compile(node.object)
+        result = self.compile_expression(node.object)
 
-        tp = self.stack.top()[0]
+        tp = ResultTypeAnalyzer.quick_analysis(result, {}).result_type
 
         assert isinstance(tp, ScopeProtocol)
 
         member = tp.get_name(node.member_name)
 
-        if isinstance(member, IOOPMember):
+        if isinstance(member, IOOPMemberDefinition):
             assert isinstance(tp, TypeProtocol)
             match member.binding:
                 case Binding.Instance:
@@ -602,7 +659,9 @@ class CodeCompiler:
             case IOOPDefinition():
                 return [vm.LoadObject(member)]
 
-        raise TypeError(type(member))
+        return [vm.LoadObject(member)]
+
+        # raise TypeError(type(member))
 
     @_cpl
     def _(self, node: resolved.ResolvedObject):
@@ -707,7 +766,7 @@ class TopLevelCodeCompiler(CodeContext):
     def _(self, node: resolved.ResolvedImport):
         source = self.compiler.evaluate(node.source)
         if not String.is_instance(source):
-            raise TypeError
+            raise CodeCompilationError(f"Import source must be a string", node.node)
 
         result = self.compiler.compilation_context.import_system.import_from(source.native)
 
@@ -738,6 +797,15 @@ class FunctionBodyCompiler(CodeContext):
     _cpl = _compile.register
 
     @_cpl
+    def _(self, node: resolved.ResolvedVar):
+        local = self.context.cache(node)
+        assert isinstance(local, Local)
+        self.stack.push_local(local)
+        return [
+            vm.LoadLocal(local)
+        ]
+
+    @_cpl
     def _(self, node: resolved.ResolvedParameter):
         parameter = self.context.cache(node)
         assert isinstance(parameter, Parameter)
@@ -745,8 +813,40 @@ class FunctionBodyCompiler(CodeContext):
         return [vm.LoadArgument(parameter)]
 
     @_cpl
+    def _(self, node: resolved.ResolvedGenericParameter):
+        parameter = self.context.cache(node)
+        assert isinstance(parameter, GenericParameter)
+        self.stack.push_object(parameter)
+        return [vm.LoadObject(parameter)]
+
+    @_cpl
     def _(self, node: resolved.ResolvedReturn):
-        return [*(self.code_compiler.compile(node.expression) if node.expression else ()), vm.Return()]
+        if node.expression:
+            result = self.code_compiler.compile(node.expression)
+            if isinstance(result, CodeGenerationResult):
+                result = result.code
+        else:
+            result = ()
+        return [*result, vm.Return()]
+
+
+class MethodBodyCompiler(FunctionBodyCompiler):
+    def compile(self, node: resolved.ResolvedNode):
+        return self._compile(node)
+
+    @singledispatchmethod
+    def _compile(self, node: resolved.ResolvedNode):
+        return super()._compile(node)
+
+    _cpl = _compile.register
+
+    @_cpl
+    def _(self, node: resolved.ResolvedVar):
+        var = self.context.cache(node)
+        if isinstance(var, Field):
+            self.stack.push_field(var)
+            return [vm.LoadField(var)]
+        return super()._compile(node)
 
 
 class FunctionSignatureCompiler(CodeContext):
@@ -758,6 +858,13 @@ class FunctionSignatureCompiler(CodeContext):
         return None
 
     _cpl = _compile.register
+
+    @_cpl
+    def _(self, node: resolved.ResolvedGenericParameter):
+        parameter = self.context.cache(node)
+        assert isinstance(parameter, GenericParameter)
+        self.stack.push_type(parameter)
+        return [vm.LoadObject(parameter)]
 
     @_cpl
     def _(self, node: resolved.ResolvedParameter):
@@ -792,9 +899,12 @@ class CompilerDispatcher(StatefulProcessor):
 
         dispatcher.register_compiler(Function, compiler.function_compiler)
         dispatcher.register_compiler(Parameter, compiler.function_compiler)
+        dispatcher.register_compiler(Local, compiler.function_compiler)
+        dispatcher.register_compiler(GenericParameter, compiler.function_compiler)
         dispatcher.register_compiler(FunctionBody, compiler.function_compiler)
 
         dispatcher.register_compiler(Method, compiler.class_compiler.method_compiler)
+        dispatcher.register_compiler(MethodBody, compiler.class_compiler.method_compiler)
         dispatcher.register_compiler(Class, compiler.class_compiler)
         dispatcher.register_compiler(Field, compiler.class_compiler)
 
@@ -821,6 +931,8 @@ class NodeCompiler(StatefulProcessor):
 
     def __init__(self, state: State, context: CompilationContext):
         super().__init__(state)
+
+        self.operators: dict[str, OverloadGroup] = {}
 
         self._vm = Interpreter()
         self._context = CompilerContext(self)
@@ -875,6 +987,16 @@ class NodeCompiler(StatefulProcessor):
         return self._module_compiler
 
     # endregion Sub-Compilers
+
+    def add_operator_function(self, name: str, fn: IFunction):
+        if name not in self.operators:
+            group = self.operators[name] = OverloadGroup(name, None)
+        else:
+            group = self.operators[name]
+        group.overloads.append(fn)
+
+    def get_operator_function(self, name: str):
+        return self.operators[name]
 
     def declare(self, nodes: list[resolved.ResolvedNode] | resolved.ResolvedNode) -> list[tuple[resolved.ResolvedNode, IMiniZObject]] | IMiniZObject:
         if not isinstance(nodes, list):

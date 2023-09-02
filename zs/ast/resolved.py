@@ -3,7 +3,7 @@ from typing import Generic, TypeVar, TYPE_CHECKING
 if TYPE_CHECKING:
     from miniz.type_system import ObjectProtocol
 from zs.ast.node import Node
-from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier, MemberAccess, Return
+from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier, MemberAccess, Return, Literal
 
 _T = TypeVar("_T", bound=Node)
 
@@ -77,6 +77,7 @@ class ResolvedFunctionBody(ResolvedNode[None]):
 
 class ResolvedFunction(ResolvedNode[Function]):
     return_type: ResolvedExpression | None
+    generic_parameters: list["ResolvedGenericParameter"] | None
     positional_parameters: list["ResolvedParameter"]
     named_parameters: list["ResolvedParameter"]
     variadic_positional_parameter: "ResolvedParameter | None"
@@ -85,6 +86,7 @@ class ResolvedFunction(ResolvedNode[Function]):
 
     def _init(self):
         self.return_type = None
+        self.generic_parameters = None
         self.positional_parameters = []
         self.named_parameters = []
         self.variadic_positional_parameter = None
@@ -93,7 +95,13 @@ class ResolvedFunction(ResolvedNode[Function]):
 
     @property
     def name(self):
-        return self.node.name.name if self.node.name is not None else None
+        if self.node.name is None:
+            return None
+        if isinstance(self.node.name, Identifier):
+            return self.node.name.name
+        if isinstance(self.node.name, Literal):
+            return self.node.name.token_info.literal.value
+        raise RuntimeError
 
 
 class ResolvedFunctionCall(ResolvedExpression[FunctionCall]):
@@ -104,6 +112,12 @@ class ResolvedFunctionCall(ResolvedExpression[FunctionCall]):
     @property
     def operator(self):
         return self.node.operator
+
+
+class ResolvedGenericParameter(ResolvedExpression, ResolvedNode[Identifier]):
+    @property
+    def name(self):
+        return self.node.name
 
 
 class ResolvedImport(ResolvedStatement[Import]):

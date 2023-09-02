@@ -134,6 +134,9 @@ class Function(TokenInfo):
 
     keyword_fun: Token
 
+    left_square_bracket: Token | None
+    right_square_bracket: Token | None
+
     left_parenthesis: Token
     right_parenthesis: Token
 

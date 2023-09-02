@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Iterable
 
-from zs.ctrt.protocols import ObjectProtocol, TypeProtocol
+from miniz.core import ObjectProtocol, TypeProtocol
 from miniz.interfaces.base import ScopeProtocol
 from zs.zs2miniz.import_system import Importer, ImportSystem
 from zs.zs2miniz.lib import DocumentContext
@@ -40,7 +40,7 @@ class ZSImporter(Importer):
         if path is None:
             return self._import_system.state.error(f"Could not find file \'{path}\'")
 
-        if self._import_system.compiler.toolchain.context.get_document_context(path, default=None) is not None:
+        if self._import_system.compiler.current_toolchain.context.get_document_context(path, default=None) is not None:
             return self._import_system.state.error(f"Document \'{path}\' was already imported")
 
         document = self._import_system.compiler.import_document(path)

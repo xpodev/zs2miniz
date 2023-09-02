@@ -17,6 +17,27 @@ class SeekMode(int, Enum):
     End = 2
 
 
+class SavePosition:
+    _stream: "TokenStream"
+    _restore: bool
+
+    def __init__(self, stream: "TokenStream"):
+        self._stream = stream
+        self._restore = True
+        self._position = stream.position
+
+    @property
+    def should_restore(self):
+        return self._restore
+
+    def restore(self):
+        self._stream.seek(self._position, SeekMode.Start)
+        self.commit()
+
+    def commit(self):
+        self._restore = False
+
+
 class TokenStream:
     _tokens: list[Token]
     _current: int
@@ -27,6 +48,10 @@ class TokenStream:
         self._tokens = list(filter(lambda t: not t.is_whitespace, tokens))
         self._current = 0
         self._file = file
+
+    @property
+    def position(self):
+        return self._current
 
     @property
     def end(self):
@@ -65,17 +90,9 @@ class TokenStream:
 
     @contextmanager
     def save_position(self):
-        position = self._current
-        state = type("", (object,), {"__restore__": True, "restore": None})()
-        state.commit = lambda: setattr(state, "__restore__", False)
-
-        def restore():
-            state.__restore__ = False
-            self._current = position
-
-        state.restore = restore
+        state = SavePosition(self)
         try:
             yield state
         finally:
-            if state.__restore__:
-                self._current = position
+            if state.should_restore:
+                state.restore()

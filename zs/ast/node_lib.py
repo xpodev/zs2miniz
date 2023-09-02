@@ -177,8 +177,9 @@ class Function(Expression[token_info.Function]):
     'fun' NAME? '(' PARAMETER* ')' (WHERE_CLAUSE | WHEN_CLAUSE)* EXPRESSION
     """
 
-    name: Optional["Identifier"]
+    name: Optional["Identifier | Literal"]
 
+    generic_parameters: list["Identifier"] | None
     positional_parameters: list["Parameter"]
     named_parameters: list["Parameter"]
     variadic_positional_parameter: "Parameter | None"
@@ -192,6 +193,9 @@ class Function(Expression[token_info.Function]):
             self,
             _fun: Token,
             name: Optional["Identifier"],
+            _left_square_bracket: Token | None,
+            generic_parameters: list["Identifier"],
+            _right_square_bracket: Token | None,
             _left_parenthesis: Token,
             positional_parameters: list["Parameter"],
             # _left_np_bracket: Token | None,
@@ -207,8 +211,9 @@ class Function(Expression[token_info.Function]):
             _right_bracket: Token | None,
             _semicolon: Token | None
     ):
-        super().__init__(token_info.Function(_fun, _left_parenthesis, _right_parenthesis, _colon, _left_bracket, _right_bracket, _semicolon))
+        super().__init__(token_info.Function(_fun, _left_square_bracket, _right_square_bracket, _left_parenthesis, _right_parenthesis, _colon, _left_bracket, _right_bracket, _semicolon))
         self.name = name
+        self.generic_parameters = generic_parameters
         self.positional_parameters = positional_parameters
         self.named_parameters = named_parameters
         self.variadic_positional_parameter = variadic_positional_parameter
@@ -245,8 +250,10 @@ class FunctionCall(Expression[token_info.FunctionCall]):
             self.operator = "()"
         elif _left_parenthesis == '{' and _right_parenthesis == '}':
             self.operator = "{}"
+        elif _left_parenthesis == '[' and _right_parenthesis == ']':
+            self.operator = "[]"
         else:
-            raise ValueError("Call operator must be either () or {}")
+            raise ValueError("Call operator must be either (), [] or {}")
 
 
 class Identifier(Expression[token_info.Identifier]):

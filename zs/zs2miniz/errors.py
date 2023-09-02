@@ -1,3 +1,6 @@
+from zs.ast.node import Node
+
+
 class ZSharpError(Exception):
     """
     Base exception for all Z# errors
@@ -16,7 +19,12 @@ class NameAlreadyBoundError(ZSharpError):
     """
 
 
-class CompilerNotAvailableError(ZSharpError):
+class CodeCompilationError(ZSharpError):
     """
-    Raised when trying to compile a node in a compiler that does not support compiling said node
+    Raised when compiling code fails
     """
+
+    def __init__(self, message: str, node: Node, *args):
+        super().__init__(message, *args)
+        self.message = message
+        self.node = node
