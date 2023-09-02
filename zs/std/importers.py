@@ -40,7 +40,7 @@ class ZSImporter(Importer):
         if path is None:
             return self._import_system.state.error(f"Could not find file \'{path}\'")
 
-        if self._import_system.compiler.toolchain.context.get_document_context(path, default=None) is not None:
+        if self._import_system.compiler.current_toolchain.context.get_document_context(path, default=None) is not None:
             return self._import_system.state.error(f"Document \'{path}\' was already imported")
 
         document = self._import_system.compiler.import_document(path)

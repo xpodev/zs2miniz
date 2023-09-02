@@ -88,6 +88,15 @@ class NodeRegistry(_SubProcessor):
     _reg = _register.register
 
     @_reg
+    def _(self, node: nodes.Binary):
+        result = resolved.ResolvedBinary(node)
+
+        result.left = self.register(node.left)
+        result.right = self.register(node.right)
+
+        return result
+
+    @_reg
     def _(self, node: nodes.Class):
         result = resolved.ResolvedClass(node)
 
@@ -315,6 +324,11 @@ class NodeResolver(_SubProcessor):
     _res = _resolve.register
 
     # region Resolved Nodes
+
+    @_res
+    def _(self, node: resolved.ResolvedBinary):
+        node.left = self.resolve(node.left)
+        node.right = self.resolve(node.right)
 
     @_res
     def _(self, node: resolved.ResolvedClass):

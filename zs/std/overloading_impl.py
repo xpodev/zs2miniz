@@ -46,10 +46,7 @@ class _FunctionIOverloaded(IOverloaded[Function]):
             for param in sig.positional_parameters[len(args):]:
                 if not param.has_default_value:
                     return None
-                arg = Argument()
-                arg.code = [vm.LoadObject(param.default_value)]
-                arg.type = param.parameter_type
-                args_match[param] = arg
+                args_match[param] = Argument([vm.LoadObject(param.default_value)], param.parameter_type)
 
         kw_params = {
             param.name: param for param in sig.named_parameters
@@ -74,10 +71,7 @@ class _FunctionIOverloaded(IOverloaded[Function]):
                 for param in sig.named_parameters[len(kwargs):]:
                     if not param.has_default_value:
                         return None
-                    arg = Argument()
-                    arg.code = [vm.LoadObject(param.default_value)]
-                    arg.type = param.parameter_type
-                    kwargs_match[param] = arg
+                    kwargs_match[param] = Argument([vm.LoadObject(param.default_value)], param.parameter_type)
 
         result = OverloadMatchResult()
         result.matched_args = [

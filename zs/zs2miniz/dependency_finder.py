@@ -236,6 +236,7 @@ class RuntimeDependencyFinder(DependencyFinder):
             self.add(node, *self.dispatcher.typing_finder.find_dependencies(node.type))
         if node.initializer:
             self.add(node, *self.dispatcher.code_finder.find_dependencies(node.initializer))
+        return [node]
 
     # endregion
 
@@ -393,6 +394,13 @@ class CodeDependencyFinder(DependencyFinder):
     _dep = _find_dependencies.register
 
     # region Implementation
+
+    @_dep
+    def _(self, node: resolved.ResolvedBinary):
+        return [
+            *self.find_dependencies(node.left),
+            *self.find_dependencies(node.right)
+        ]
 
     @_dep
     def _(self, node: resolved.ResolvedExpressionStatement):
