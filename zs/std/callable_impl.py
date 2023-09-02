@@ -3,6 +3,7 @@ from miniz.concrete.overloading import OverloadGroup, OverloadGroupType
 from miniz.core import ObjectProtocol
 from miniz.generic import IGeneric
 from miniz.generic.function import GenericFunctionInstanceType, GenericFunctionInstance
+from miniz.generic.oop import GenericClassInstanceType, GenericClassInstance
 from miniz.interfaces.overloading import Argument
 from miniz.type_system import OOPDefinitionType
 from miniz.vm import instructions as vm
@@ -84,6 +85,21 @@ class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
         ])
 
 
+class __GenericClassInstanceTypeICallable(ICallable[GenericClassInstanceType]):
+    def curvy_call(self, compiler, cls: GenericClassInstance, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+        assert isinstance(cls.origin.runtime_type, ICallable)
+        result: CallSiteCode = cls.origin.runtime_type.curvy_call(compiler, cls.origin, args, kwargs)
+
+        result.callee = result.callee.get_reference(owner=cls)
+        return result
+
+    def square_call(self, compiler, cls: Class, args: list[Argument], kwargs: dict[str, Argument]):
+        if kwargs:
+            raise TypeError(f"Generic instantiation is not allowed with keyword arguments yet.")
+
+        raise TypeError(f"Can't generic instantiate a generic instantiation")
+
+
 class __ClassICallable(ICallable[Class]):
     def curvy_call(self: Class, compiler, item: ObjectProtocol, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
         matches = self.get_name(f"_()")
@@ -129,7 +145,7 @@ class __GenericFunctionInstanceICallable(ICallable[GenericFunctionInstanceType])
             *((match.call_instruction,) if match.has_callee else match.callee_instructions),
         ])
 
-    def square_call(self, compiler, fn: GenericFunctionInstance, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
+    def square_call(self, compiler, fn: GenericFunctionInstance, args: list[Argument], kwargs: dict[str, Argument]):
         if kwargs:
             raise TypeError(f"Generic instantiation is not allowed with keyword arguments yet.")
 

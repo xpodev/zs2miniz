@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from functools import singledispatchmethod
 from typing import TypeVar, Generic, Type
 
+from miniz.generic.oop import GenericClassInstance
 from miniz.interfaces.overloading import Argument
 from utilz.analysis import CodeAnalyzer
 from utilz.analysis.analyzers import ResultTypeAnalyzer
@@ -272,8 +273,8 @@ class FunctionCompiler(CompilerBase[IFunction]):
         with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
             if node.type:
                 item.target_type = self.compiler.evaluate(node.type)
-            else:
-                item.target_type = Any
+            # else:
+            #     item.target_type = Any
         with self.compiler.expression_compiler.code_context(self._function_body_compiler):
             if node.initializer:
                 init = self.compiler.expression_compiler.compile_expression(node.initializer)
@@ -405,7 +406,7 @@ class ClassCompiler(CompilerBase[Class]):
         bases = list(map(self.compiler.evaluate, node.bases))
 
         if bases:
-            if isinstance(bases[0], IClass):
+            if isinstance(bases[0], (IClass, GenericClassInstance)):
                 item.base = bases.pop(0)
 
             for base in bases:
