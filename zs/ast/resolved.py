@@ -3,7 +3,25 @@ from typing import Generic, TypeVar, TYPE_CHECKING
 if TYPE_CHECKING:
     from miniz.type_system import ObjectProtocol
 from zs.ast.node import Node
-from zs.ast.node_lib import Expression, Binary, ExpressionStatement, Unary, FunctionCall, Class, Module, Var, Function, Parameter, Import, Alias, Identifier, MemberAccess, Return, Literal
+from zs.ast.node_lib import (
+    Alias,
+    Binary,
+    Class,
+    Expression,
+    ExpressionStatement,
+    Function,
+    FunctionCall,
+    Identifier,
+    If,
+    Import,
+    Literal,
+    MemberAccess,
+    Module,
+    Parameter,
+    Return,
+    Unary,
+    Var, Block, While, Break,
+)
 
 _T = TypeVar("_T", bound=Node)
 
