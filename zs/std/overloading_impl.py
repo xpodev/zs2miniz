@@ -1,13 +1,23 @@
 from miniz.concrete.function import Function
+from miniz.concrete.oop import Method
 from miniz.concrete.signature import Parameter
 from miniz.core import TypeProtocol
 from miniz.generic import GenericParameter
+from miniz.interfaces.oop import Binding
 from miniz.interfaces.overloading import IOverloaded, Argument, OverloadMatchResult
 from miniz.vm import instructions as vm
 
 
 class _FunctionIOverloaded(IOverloaded[Function]):
-    def match(self: Function, args: list[Argument], kwargs: list[tuple[str, Argument]], *, strict: bool = False, type_mappings: dict[GenericParameter, TypeProtocol] = None) -> OverloadMatchResult | None:
+    def match(
+            self: Function,
+            positional_arguments: list[Argument],
+            named_arguments: list[tuple[str, Argument]],
+            *,
+            strict: bool = False,
+            type_mappings: dict[GenericParameter, TypeProtocol] = None,
+            **kwargs
+    ) -> OverloadMatchResult | None:
         from miniz.type_system import assignable_to, are_identical
 
         compare_type = assignable_to if not strict else are_identical
@@ -28,22 +38,22 @@ class _FunctionIOverloaded(IOverloaded[Function]):
             return compare_type(source, target.parameter_type)
 
         sig = self.signature
-        if len(args) > len(sig.positional_parameters) and sig.variadic_positional_parameter is None:
+        if len(positional_arguments) > len(sig.positional_parameters) and sig.variadic_positional_parameter is None:
             return None
-        if len(kwargs) > len(sig.named_parameters) and sig.variadic_named_parameter is None:
+        if len(named_arguments) > len(sig.named_parameters) and sig.variadic_named_parameter is None:
             return None
 
-        for arg, param in zip(args, sig.positional_parameters):
+        for arg, param in zip(positional_arguments, sig.positional_parameters):
             if not check_assignability(arg.type, param):
                 return None
             args_match[param] = arg
-        if len(args) > len(sig.positional_parameters):
-            for arg in args[len(sig.positional_parameters):]:
+        if len(positional_arguments) > len(sig.positional_parameters):
+            for arg in positional_arguments[len(sig.positional_parameters):]:
                 if not check_assignability(arg.type, sig.variadic_positional_parameter):
                     return None
                 raise TypeError(f"Variadic parameters are not supported yet")
-        elif len(args) < len(sig.positional_parameters):
-            for param in sig.positional_parameters[len(args):]:
+        elif len(positional_arguments) < len(sig.positional_parameters):
+            for param in sig.positional_parameters[len(positional_arguments):]:
                 if not param.has_default_value:
                     return None
                 args_match[param] = Argument([vm.LoadObject(param.default_value)], param.parameter_type)
@@ -51,7 +61,7 @@ class _FunctionIOverloaded(IOverloaded[Function]):
         kw_params = {
             param.name: param for param in sig.named_parameters
         }
-        for name, arg in kwargs:
+        for name, arg in named_arguments:
             try:
                 param = kw_params[name]
                 kwargs_match[param] = arg
@@ -62,13 +72,13 @@ class _FunctionIOverloaded(IOverloaded[Function]):
             if not check_assignability(arg.type, param):
                 return None
         else:
-            if len(kwargs) > len(sig.named_parameters):
-                for arg in args[len(sig.named_parameters):]:
+            if len(named_arguments) > len(sig.named_parameters):
+                for arg in positional_arguments[len(sig.named_parameters):]:
                     if not check_assignability(arg.type, sig.variadic_positional_parameter):
                         return None
                     raise TypeError(f"Variadic parameters are not supported yet")
-            elif len(kwargs) < len(sig.named_parameters):
-                for param in sig.named_parameters[len(kwargs):]:
+            elif len(named_arguments) < len(sig.named_parameters):
+                for param in sig.named_parameters[len(named_arguments):]:
                     if not param.has_default_value:
                         return None
                     kwargs_match[param] = Argument([vm.LoadObject(param.default_value)], param.parameter_type)
