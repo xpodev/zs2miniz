@@ -9,7 +9,8 @@ if typing.TYPE_CHECKING:
 import re
 from pathlib import Path
 
-from miniz.interfaces.base import ScopeProtocol, IMiniZObject
+from miniz.interfaces.base import IMiniZObject
+from miniz.core import ScopeProtocol
 
 
 class Importer:

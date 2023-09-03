@@ -15,13 +15,13 @@ from miniz.concrete.module import Module
 from miniz.concrete.oop import Class, Field, Method, MethodBody
 from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
-from miniz.core import TypeProtocol
+from miniz.core import TypeProtocol, ScopeProtocol
 from miniz.generic import GenericSignature, GenericParameter
-from miniz.interfaces.base import IMiniZObject, ScopeProtocol
+from miniz.interfaces.base import IMiniZObject
 from miniz.interfaces.function import IFunction
 from miniz.interfaces.module import IModule
 from miniz.interfaces.oop import IClass, IField, Binding, IOOPMemberDefinition, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition
-from miniz.type_system import Any, assignable_to, String
+from miniz.type_system import Any, assignable_to, String, Boolean
 from miniz.vm import instructions as vm
 from miniz.vm.instruction import Instruction
 from miniz.vm.runtime import Interpreter
@@ -29,11 +29,12 @@ from miniz.vm.type_stack import TypeStack
 from utilz.analysis.analyzers.return_type_analyzer import ReturnTypeAnalyzer
 from utilz.callable import ICallable
 from utilz.code_generation.core import CodeGenerationResult
-from utilz.code_generation.interfaces import BoundMemberCode
+from utilz.code_generation.code_objects import BoundMemberCode, LoopingCode
+from utilz.scope import IScope
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
-from zs.zs2miniz.errors import CodeCompilationError
 from zs.utils import SingletonMeta
+from zs.zs2miniz.errors import CodeCompilationError, OverloadMatchError
 from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
 
