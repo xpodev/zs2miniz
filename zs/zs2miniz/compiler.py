@@ -518,7 +518,9 @@ class CodeCompiler:
             if result is not None:
                 break
         else:
-            return self._compile(node)
+            result = self._compile(node)
+        if not isinstance(result, CodeGenerationResult):
+            result = CodeGenerationResult(list(result))
         return result
 
     @singledispatchmethod
@@ -545,7 +547,11 @@ class CodeCompiler:
 
         assert isinstance(group.runtime_type, ICallable)
 
-        return group.runtime_type.curvy_call(self.compiler, group, args, [])
+        try:
+            return group.runtime_type.curvy_call(self.compiler, CodeGenerationResult([vm.LoadObject(group)]), args, [])
+        except OverloadMatchError as e:
+            raise CodeCompilationError(f"Could not find a suitable overload for operator '{node.operator}' with types ({e.types})", node.node)
+
     @_cpl
     def _(self, node: resolved.ResolvedBlock):
         return self.compile_code(node.body)
@@ -591,7 +597,8 @@ class CodeCompiler:
                 arg_result.additional_information[ResultTypeAnalyzer].result_type
             )
 
-        callable_result = code_analyzer.analyze(self.compile_expression(node.callable), _context)
+        callable_code = self.compile(node.callable)
+        callable_result = code_analyzer.analyze(callable_code.code, _context)
         callable_type: TypeProtocol = callable_result.additional_information[ResultTypeAnalyzer].result_type
 
         del _context
@@ -599,19 +606,16 @@ class CodeCompiler:
         if not isinstance(callable_type, ICallable):
             raise CodeCompilationError(f"Object of type '{callable_type}' is not callable", node.node)
 
-        # todo: let the callable handle resolve. pass code directly instead
-        top = callable_result.code[-1]
-        if isinstance(top, vm.LoadObject):
-            item = top.object
-        else:
-            item = callable_result.code
         kwargs_pairs = [(key, value) for key, value in kwargs.items()]
-        if node.operator == "()":
-            result = callable_type.curvy_call(self.compiler, item, args, kwargs_pairs)
-        elif node.operator == "[]":
-            result = callable_type.square_call(self.compiler, item, args, kwargs_pairs)
-        else:
-            raise CodeCompilationError(f"Invalid call operator: '{node.operator}'", node.node)
+        try:
+            if node.operator == "()":
+                result = callable_type.curvy_call(self.compiler, callable_code, args, kwargs_pairs)
+            elif node.operator == "[]":
+                result = callable_type.square_call(self.compiler, callable_code, args, kwargs_pairs)
+            else:
+                raise CodeCompilationError(f"Invalid call operator: '{node.operator}'", node.node)
+        except OverloadMatchError as e:
+            raise CodeCompilationError(f"Could not find a suitable overload for function '{e.group.name}' with types ({e.types})", node.node)
 
         return result
 
@@ -644,6 +648,7 @@ class CodeCompiler:
             vm.Jump(if_false[-1]),
             *if_false
         ]
+
     @_cpl
     def _(self, node: resolved.ResolvedImport):
         return self.current_code_context.compile(node)
@@ -656,49 +661,16 @@ class CodeCompiler:
 
     @_cpl
     def _(self, node: resolved.ResolvedMemberAccess):
-        result = self.compile_expression(node.object)
+        code = self.compile_expression(node.object)
 
-        tp = ResultTypeAnalyzer.quick_analysis(result, {}).result_type
+        result_type = ResultTypeAnalyzer.quick_analysis(code, {}).result_type
 
-        assert isinstance(tp, ScopeProtocol)
+        if not isinstance(result_type, IScope):
+            raise CodeCompilationError(f"{result_type} does not implement the IScope typeclass", node.node)
 
-        member = tp.get_name(node.member_name)
+        result = result_type.get_member(CodeGenerationResult(code), node.member_name)
 
-        if isinstance(member, IOOPMemberDefinition):
-            assert isinstance(tp, TypeProtocol)
-            match member.binding:
-                case Binding.Instance:
-                    if not assignable_to(tp, member.owner):
-                        raise TypeError
-                    self.stack.pop()
-                case Binding.Static:
-                    result = []
-                    self.stack.pop()
-                case Binding.Class:
-                    if assignable_to(tp, member.owner):
-                        result = [vm.LoadObject(tp.runtime_type)]
-                    self.stack.pop()
-            match member:
-                case IField() as field:
-                    self.stack.push_field(field)
-                    return [*result, vm.LoadField(field)]
-                case IMethod() as method:
-                    """
-                    Push 'this' if available, call a bound method constructor. otherwise, return the overloads normally
-                    """
-                    raise NotImplementedError
-
-        match member:
-            case IFunction():
-                return [vm.LoadObject(member)]
-            case OverloadGroup():
-                return [vm.LoadObject(member)]
-            case IOOPDefinition():
-                return [vm.LoadObject(member)]
-
-        return [vm.LoadObject(member)]
-
-        # raise TypeError(type(member))
+        return result
 
     @_cpl
     def _(self, node: resolved.ResolvedObject):

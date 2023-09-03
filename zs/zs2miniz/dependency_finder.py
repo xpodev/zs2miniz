@@ -403,6 +403,16 @@ class CodeDependencyFinder(DependencyFinder):
         ]
 
     @_dep
+    def _(self, node: resolved.ResolvedBlock):
+        return [
+            *sum(map(self.find_dependencies, node.body), [])
+        ]
+
+    @_dep
+    def _(self, node: resolved.ResolvedBreak):
+        return []
+
+    @_dep
     def _(self, node: resolved.ResolvedExpressionStatement):
         return [
             *self.find_dependencies(node.expression),
@@ -421,6 +431,14 @@ class CodeDependencyFinder(DependencyFinder):
         return [node.origin]
 
     @_dep
+    def _(self, node: resolved.ResolvedIf):
+        return [
+            *self.find_dependencies(node.condition),
+            *self.find_dependencies(node.if_body),
+            *(self.find_dependencies(node.else_body) if node.else_body else ()),
+        ]
+
+    @_dep
     def _(self, node: resolved.ResolvedMemberAccess):
         return self.find_dependencies(node.object)
 
@@ -436,6 +454,14 @@ class CodeDependencyFinder(DependencyFinder):
         if node.expression is None:
             return []
         return self.find_dependencies(node.expression)
+
+    @_dep
+    def _(self, node: resolved.ResolvedWhile):
+        return [
+            *self.find_dependencies(node.condition),
+            *(self.find_dependencies(node.while_body) if node.while_body else ()),
+            *(self.find_dependencies(node.else_body) if node.else_body else ()),
+        ]
 
     # endregion
 

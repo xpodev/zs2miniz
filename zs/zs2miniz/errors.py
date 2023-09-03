@@ -28,3 +28,14 @@ class CodeCompilationError(ZSharpError):
         super().__init__(message, *args)
         self.message = message
         self.node = node
+
+
+class OverloadMatchError(ZSharpError):
+    """
+    Raised when matching an overload group with certain args and kwargs fails.
+    """
+
+    def __init__(self, group, types, *args):
+        super().__init__(group, types, args)
+        self.group = group
+        self.types = types
