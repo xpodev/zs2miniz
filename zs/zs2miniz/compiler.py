@@ -33,6 +33,7 @@ from utilz.code_generation.interfaces import BoundMemberCode
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
 from zs.zs2miniz.errors import CodeCompilationError
+from zs.utils import SingletonMeta
 from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
 
@@ -465,6 +466,8 @@ class CodeCompiler:
 
         self._code_context_stack = [TopLevelCodeCompiler(self)]
 
+        LoopBodyCompiler(compiler)
+
     @property
     def compiler(self):
         return self._compiler
@@ -542,6 +545,9 @@ class CodeCompiler:
         assert isinstance(group.runtime_type, ICallable)
 
         return group.runtime_type.curvy_call(self.compiler, group, args, [])
+    @_cpl
+    def _(self, node: resolved.ResolvedBlock):
+        return self.compile_code(node.body)
 
     @_cpl
     def _(self, node: resolved.ResolvedClass):
@@ -608,6 +614,35 @@ class CodeCompiler:
 
         return result
 
+    @_cpl
+    def _(self, node: resolved.ResolvedIf):
+        condition = self.compile_expression(node.condition)
+
+        result_type = ResultTypeAnalyzer.quick_analysis(condition, {}).result_type
+
+        if result_type is not Boolean:
+            # todo: this is also ugly
+            arg = Argument(condition, result_type)
+            assert isinstance(result_type, ScopeProtocol)
+            to_bool = result_type.get_name("->bool")
+            assert isinstance(to_bool.runtime_type, ICallable)
+            result = to_bool.runtime_type.curvy_call(self.compiler, CodeGenerationResult([vm.LoadObject(to_bool)]), [arg], [])
+            condition = result.code
+
+        if_true = self.compile(node.if_body).code
+        if node.else_body:
+            if_false = self.compile(node.else_body).code
+            if_false.append(vm.NoOperation())
+        else:
+            if_false = [vm.NoOperation()]
+
+        return [
+            *condition,
+            vm.JumpIfFalse(if_false[0]),
+            *if_true,
+            vm.Jump(if_false[-1]),
+            *if_false
+        ]
     @_cpl
     def _(self, node: resolved.ResolvedImport):
         return self.current_code_context.compile(node)
@@ -676,6 +711,39 @@ class CodeCompiler:
     @_cpl
     def _(self, node: resolved.ResolvedVar):
         return self.current_code_context.compile(node)
+
+    @_cpl
+    def _(self, node: resolved.ResolvedWhile):
+        condition = self.compile_expression(node.condition)
+
+        result_type = ResultTypeAnalyzer.quick_analysis(condition, {}).result_type
+
+        if result_type is not Boolean:
+            # todo: this is also ugly
+            arg = Argument(condition, result_type)
+            assert isinstance(result_type, ScopeProtocol)
+            to_bool = result_type.get_name("->bool")
+            assert isinstance(to_bool.runtime_type, ICallable)
+            result = to_bool.runtime_type.curvy_call(self.compiler, to_bool, [arg], [])
+            condition = result.code
+
+        cpl = LoopBodyCompiler(...)
+        with self.code_context(cpl), cpl.node(node) as ctx:
+            if_true = [ctx.continue_target]
+            if_true.extend(self.compile(node.while_body).code)
+            if node.else_body:
+                if_false = self.compile(node.else_body).code
+                if_false.append(ctx.break_target)
+            else:
+                if_false = [ctx.break_target]
+
+        return [
+            *condition,
+            vm.JumpIfFalse(if_false[0]),
+            *if_true,
+            vm.Jump(condition[0]),
+            *if_false
+        ]
 
 
 class TopLevelCompiler(CompilerBase):
@@ -873,6 +941,42 @@ class FunctionSignatureCompiler(CodeContext):
         assert isinstance(parameter, Parameter)
         self.stack.push_type(parameter.parameter_type)
         return [vm.LoadObject(parameter)]
+
+
+class LoopBodyCompiler(CodeContext, metaclass=SingletonMeta):
+    _cache: dict[resolved.ResolvedNode, LoopingCode]
+
+    def __init__(self, compiler: "NodeCompiler"):
+        super().__init__(compiler)
+        self._cache = {}
+        self._loop = None
+
+    @contextmanager
+    def node(self, node: resolved.ResolvedNode):
+        code = self._cache[node] = LoopingCode([], vm.NoOperation(), vm.NoOperation())
+        loop, self._loop = self._loop, node
+        try:
+            yield code
+        finally:
+            del self._cache[node]
+            self._loop = loop
+
+    def compile(self, node: resolved.ResolvedNode):
+        return self._compile(node)
+
+    @singledispatchmethod
+    def _compile(self, node: resolved.ResolvedNode):
+        return None
+
+    _cpl = _compile.register
+
+    @_cpl
+    def _(self, node: resolved.ResolvedBreak):
+        loop = node.loop if node.loop is not None else self._loop
+        loop_code = self._cache[loop]
+        return [
+            vm.Jump(loop_code.break_target)
+        ]
 
 
 class CompilerDispatcher(StatefulProcessor):

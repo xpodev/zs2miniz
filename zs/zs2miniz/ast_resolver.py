@@ -97,6 +97,25 @@ class NodeRegistry(_SubProcessor):
         return result
 
     @_reg
+    def _(self, node: nodes.Block):
+        result = resolved.ResolvedBlock(node)
+
+        result.body = list(map(self.register, node.statements))
+
+        return result
+
+    @_reg
+    def _(self, node: nodes.Break):
+        result = resolved.ResolvedBreak(node)
+
+        if node.loop is not None:
+            result.loop = self.register(node.loop)
+        else:
+            result.loop = None
+
+        return result
+
+    @_reg
     def _(self, node: nodes.Class):
         result = resolved.ResolvedClass(node)
 
@@ -185,6 +204,20 @@ class NodeRegistry(_SubProcessor):
     @_reg
     def _(self, node: nodes.Identifier):
         return node
+
+    @_reg
+    def _(self, node: nodes.If):
+        result = resolved.ResolvedIf(node)
+
+        result.condition = self.register(node.condition)
+        result.if_body = self.register(node.if_true)
+
+        if node.if_false:
+            result.else_body = self.register(node.if_false)
+        else:
+            result.else_body = None
+
+        return result
 
     @_reg
     def _(self, node: nodes.Import):
@@ -293,6 +326,23 @@ class NodeRegistry(_SubProcessor):
 
         return result
 
+    @_reg
+    def _(self, node: nodes.While):
+        result = resolved.ResolvedWhile(node)
+
+        with self.context.create_scope(result):
+            if result.name:
+                self.context.current_scope.create_name(result.name, result)
+
+            result.condition = self.register(node.condition)
+            result.while_body = self.register(node.body)
+            if node.else_body:
+                result.else_body = self.register(node.else_body)
+            else:
+                result.else_body = None
+
+        return result
+
 
 class NodeResolver(_SubProcessor):
     _resolved: set[resolved.ResolvedNode]
@@ -331,6 +381,14 @@ class NodeResolver(_SubProcessor):
         node.right = self.resolve(node.right)
 
     @_res
+    def _(self, node: resolved.ResolvedBlock):
+        node.body = list(map(self.resolve, node.body))
+
+    @_res
+    def _(self, node: resolved.ResolvedBreak):
+        node.loop = self.resolve(node.loop)
+
+    @_res
     def _(self, node: resolved.ResolvedClass):
         with self.context.use_scope(node):
             node.bases = list(map(self.resolve, node.bases))
@@ -355,6 +413,12 @@ class NodeResolver(_SubProcessor):
         node.callable = self.resolve(node.callable)
         node.arguments = list(map(self.resolve, node.arguments))
         node.keyword_arguments = dict(zip(node.keyword_arguments.keys(), list(map(self.resolve, node.keyword_arguments.values()))))
+
+    @_res
+    def _(self, node: resolved.ResolvedIf):
+        node.condition = self.resolve(node.condition)
+        node.if_body = self.resolve(node.if_body)
+        node.else_body = self.resolve(node.else_body)
 
     @_res
     def _(self, node: resolved.ResolvedImport):
@@ -393,6 +457,13 @@ class NodeResolver(_SubProcessor):
     def _(self, node: resolved.ResolvedVar):
         node.type = self.resolve(node.type)
         node.initializer = self.resolve(node.initializer)
+
+    @_res
+    def _(self, node: resolved.ResolvedWhile):
+        node.condition = self.resolve(node.condition)
+        with self.context.use_scope(node):
+            node.while_body = self.resolve(node.while_body)
+            node.else_body = self.resolve(node.else_body)
 
     # endregion Resolved Nodes
 

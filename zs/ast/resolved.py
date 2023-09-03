@@ -62,6 +62,14 @@ class ResolvedBinary(ResolvedExpression[Binary]):
         return self.node.token_info.operator.value
 
 
+class ResolvedBlock(ResolvedStatement[Block]):
+    body: list[ResolvedNode]
+
+
+class ResolvedBreak(ResolvedStatement[Break]):
+    loop: "ResolvedWhile"
+
+
 class ResolvedClass(ResolvedExpression[Class]):
     bases: list[ResolvedExpression]
 
@@ -136,6 +144,12 @@ class ResolvedGenericParameter(ResolvedExpression, ResolvedNode[Identifier]):
     @property
     def name(self):
         return self.node.name
+
+
+class ResolvedIf(ResolvedExpression[If]):
+    condition: ResolvedExpression
+    if_body: ResolvedNode
+    else_body: ResolvedNode
 
 
 class ResolvedImport(ResolvedStatement[Import]):
@@ -230,5 +244,15 @@ class ResolvedVar(ResolvedStatement[Var]):
     @property
     def name(self):
         return self.node.name.name.name
+
+
+class ResolvedWhile(ResolvedStatement[While]):
+    condition: ResolvedExpression
+    while_body: ResolvedNode
+    else_body: ResolvedNode | None
+
+    @property
+    def name(self):
+        return self.node.name.name if self.node.name else None
 
 # endregion
