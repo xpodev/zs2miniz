@@ -7,21 +7,35 @@ from miniz.generic.oop import GenericClassInstanceType, GenericClassInstance
 from miniz.interfaces.overloading import Argument
 from miniz.type_system import OOPDefinitionType
 from miniz.vm import instructions as vm
+from utilz.analysis.analyzers import ResultTypeAnalyzer
 
 from utilz.callable import ICallable
 from utilz.code_generation.core import CodeGenerationResult
-from utilz.code_generation.interfaces import CallSiteCode
+from utilz.code_generation.code_objects import CallSiteCode, BoundMemberCode
+from utilz.scope import IScope
+from zs.zs2miniz.errors import OverloadMatchError
 
 
 class __OverloadGroupICallable(ICallable[OverloadGroupType]):
-    def curvy_call(self, compiler, group: OverloadGroup, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
-        matches = group.match(args, kwargs, strict=True, recursive=False)
+    def curvy_call(self, compiler, group: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+        if isinstance(group, BoundMemberCode):
+            if group.instance:
+                instance = Argument(group.instance, group.member.owner)
+            else:
+                instance = None
+            group = group.member
+        else:
+            instance = None
+            group = compiler.vm.run(group.code).top()
+
+        matches = group.match(args, kwargs, strict=True, recursive=False, instance=instance)
 
         if not matches:
-            matches = group.match(args, kwargs, strict=False, recursive=True)
+            matches = group.match(args, kwargs, strict=False, recursive=True, instance=instance)
 
         if len(matches) != 1:
-            raise TypeError(f"Could not find a suitable overload")
+            types = ', '.join([*map(lambda arg: str(arg.type), args), *map(lambda name, arg: name + '=' + str(arg.type), kwargs)])
+            raise OverloadMatchError(group, types)
 
         match = matches[0]
 
@@ -31,9 +45,11 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
             *((match.call_instruction,) if match.has_callee else match.callee_instructions),
         ])
 
-    def square_call(self, compiler, group: OverloadGroup, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
+    def square_call(self, compiler, group: CodeGenerationResult, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
         if kwargs:
             raise TypeError(f"Generic instantiation is not allowed with keyword arguments yet.")
+
+        group = compiler.vm.run(group.code).top()
 
         result = []
 
@@ -42,7 +58,7 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
                 continue
 
             try:
-                result.append(overload.instantiate_generic([arg.code[0].object for arg in args]))
+                result.append(overload.instantiate_generic([compiler.vm.run(arg.code).top() for arg in args]))
             except ValueError:
                 ...
 
@@ -55,7 +71,11 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
 
 
 class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
-    def curvy_call(self, compiler, cls: Class, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+    def curvy_call(self, compiler, code: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+        cls = compiler.vm.run(code.code).top()
+
+        assert isinstance(cls, Class)
+
         args.insert(0, Argument([], cls))
 
         matches = cls.constructor.match(args, kwargs, strict=True, recursive=False)
@@ -74,9 +94,11 @@ class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
             vm.CreateInstance(match.callee),
         ])
 
-    def square_call(self, compiler, cls: Class, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
+    def square_call(self, compiler, code: CodeGenerationResult, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
         if kwargs:
             raise TypeError(f"Generic instantiation is not allowed with keyword arguments yet.")
+
+        cls = compiler.vm.run(code.code).top()
 
         result = cls.instantiate_generic([compiler.vm.run(arg.code).pop() for arg in args])
 
@@ -86,11 +108,15 @@ class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
 
 
 class __GenericClassInstanceTypeICallable(ICallable[GenericClassInstanceType]):
-    def curvy_call(self, compiler, cls: GenericClassInstance, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
-        assert isinstance(cls.origin.runtime_type, ICallable)
-        result: CallSiteCode = cls.origin.runtime_type.curvy_call(compiler, cls.origin, args, kwargs)
+    def curvy_call(self, compiler, code: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+        cls = compiler.vm.run(code.code).top()
 
+        assert isinstance(cls, GenericClassInstance)
+        assert isinstance(cls.origin.runtime_type, ICallable)
+
+        result = cls.origin.runtime_type.curvy_call(compiler, CodeGenerationResult([vm.LoadObject(cls.origin)]), args, kwargs)
         result.callee = result.callee.get_reference(owner=cls)
+
         return result
 
     def square_call(self, compiler, cls: Class, args: list[Argument], kwargs: dict[str, Argument]):
@@ -101,17 +127,14 @@ class __GenericClassInstanceTypeICallable(ICallable[GenericClassInstanceType]):
 
 
 class __ClassICallable(ICallable[Class]):
-    def curvy_call(self: Class, compiler, item: ObjectProtocol, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
-        matches = self.get_name(f"_()")
+    def curvy_call(self: IScope, compiler, item: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+        matches = self.get_member(item, f"_()")
 
-        if not matches:
-            raise TypeError
+        # args.insert(0, Argument(item.code, self))
+        assert isinstance(matches, BoundMemberCode)
+        assert isinstance(matches.member.runtime_type, ICallable)
 
-        assert isinstance(matches, OverloadGroup)
-
-        args.insert(0, Argument(item, self))
-
-        return matches.runtime_type.curvy_call(compiler, matches, args, kwargs)
+        return matches.member.runtime_type.curvy_call(compiler, matches, args, kwargs)
 
     def square_call(self: Class, compiler, item: ObjectProtocol, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
         matches = self.get_name(f"_[]")
@@ -127,7 +150,9 @@ class __ClassICallable(ICallable[Class]):
 
 
 class __GenericFunctionInstanceICallable(ICallable[GenericFunctionInstanceType]):
-    def curvy_call(self, compiler, fn: GenericFunctionInstance, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+    def curvy_call(self, compiler, fn: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+        fn = compiler.vm.run(fn.code).top()
+
         match = fn.origin.match(args, kwargs)
 
         if match is None:
