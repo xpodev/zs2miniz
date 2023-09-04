@@ -1,6 +1,6 @@
 from miniz.concrete.oop import Class, MethodGroup
 from miniz.core import ScopeProtocol
-from miniz.interfaces.oop import IField, IMethod, IOOPMemberDefinition, Binding
+from miniz.interfaces.oop import IField, IMethod, IOOPMemberDefinition, Binding, IProperty
 from miniz.type_system import OOPDefinitionType
 from miniz.vm import instructions as vm
 from utilz.code_generation.code_objects import BoundMemberCode
@@ -24,6 +24,11 @@ class __OOPDefinitionTypeIScope(IScope[OOPDefinitionType]):
                 member_code.append(vm.LoadField(member))
             elif member.is_instance_bound:
                 member_code.append(vm.LoadObject(member))
+        elif isinstance(member, IProperty):
+            if member.is_static_bound:
+                member_code.append(vm.LoadObject(member))
+            elif member.is_instance_bound:
+                member_code.append(vm.Call(member.getter))
         elif isinstance(member, IMethod):
             # todo: create bound delegate
             ...
@@ -43,6 +48,8 @@ class __ClassIScope(IScope[Class]):
 
         if isinstance(member, IField):
             member_code.append(vm.LoadField(member))
+        elif isinstance(member, IProperty):
+            member_code.append(vm.Call(member.getter))
         elif isinstance(member, IMethod):
             # todo: create bound delegate
             ...
