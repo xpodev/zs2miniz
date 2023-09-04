@@ -20,8 +20,8 @@ from miniz.generic import GenericSignature, GenericParameter
 from miniz.interfaces.base import IMiniZObject
 from miniz.interfaces.function import IFunction
 from miniz.interfaces.module import IModule
-from miniz.interfaces.oop import IClass, IField, Binding, IOOPMemberDefinition, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition
-from miniz.type_system import Any, assignable_to, String, Boolean
+from miniz.interfaces.oop import IClass, IField, Binding, IOOPMemberDefinition, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition, IProperty
+from miniz.type_system import Any, String, Boolean
 from miniz.vm import instructions as vm
 from miniz.vm.instruction import Instruction
 from miniz.vm.runtime import Interpreter
@@ -30,6 +30,7 @@ from utilz.analysis.analyzers.return_type_analyzer import ReturnTypeAnalyzer
 from utilz.callable import ICallable
 from utilz.code_generation.core import CodeGenerationResult
 from utilz.code_generation.code_objects import BoundMemberCode, LoopingCode
+from utilz.pattern_matching import patterns, IPattern
 from utilz.scope import IScope
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
@@ -530,6 +531,16 @@ class CodeCompiler:
     _cpl = _compile.register
 
     @_cpl
+    def _(self, node: resolved.ResolvedAssign):
+        pattern = self.compiler.pattern_constructor.get_pattern_for(node.left)
+
+        code = self.compile_expression(node.right)
+
+        result = pattern.match(CodeGenerationResult(code), target=self.compile(node.left))
+
+        return result.code
+
+    @_cpl
     def _(self, node: resolved.ResolvedBinary):
         group = self.compiler.get_operator_function(f"_{node.operator}_")
 
@@ -568,6 +579,7 @@ class CodeCompiler:
             return self.compile(node.expression)
         except CodeCompilationError as e:
             self.compiler.state.error(e.message, e.node)
+            raise e
             return ()
 
     @_cpl
@@ -994,6 +1006,58 @@ class CompilerDispatcher(StatefulProcessor):
         return dispatcher
 
 
+class PatternConstructor(StatefulProcessor):
+    _compiler: "NodeCompiler"
+
+    def __init__(self, compiler: "NodeCompiler"):
+        super().__init__(compiler.state)
+        self._compiler = compiler
+
+    @property
+    def compiler(self):
+        return self._compiler
+
+    @property
+    def context(self):
+        return self.compiler.context
+
+    def get_pattern_for(self, node: resolved.ResolvedNode) -> IPattern:
+        return self._get_pattern(node)
+
+    @singledispatchmethod
+    def _get_pattern(self, node: resolved.ResolvedNode):
+        raise CodeCompilationError(f"Could not create a pattern for node of type '{type(node)}'", node.node)
+
+    _ptn = _get_pattern.register
+
+    @_ptn
+    def _(self, node: resolved.ResolvedMemberAccess):
+        result = self.compiler.expression_compiler.compile(node)
+        assert isinstance(result, BoundMemberCode)
+        match result.member:
+            case IField() as item:
+                return patterns.FieldPattern(item)
+            case IProperty() as item:
+                return patterns.PropertyPattern(item)
+            case _:
+                raise CodeCompilationError(f"Can't assign member of type '{type(result.member)}'", node.node)
+
+    @_ptn
+    def _(self, node: resolved.ResolvedParameter):
+        item = self.context.cache(node)
+        assert isinstance(item, Parameter)
+        return patterns.ParameterPattern(item)
+
+    @_ptn
+    def _(self, node: resolved.ResolvedVar):
+        item = self.context.cache(node)
+        match item:
+            case Local() as item:
+                return patterns.LocalPattern(item)
+            case _:
+                raise CodeCompilationError(f"Target type '{type(item)}' is not implemented", node.node)
+
+
 class NodeCompiler(StatefulProcessor):
     _dispatcher: CompilerDispatcher
 
@@ -1006,6 +1070,8 @@ class NodeCompiler(StatefulProcessor):
     _class_compiler: ClassCompiler
     _function_compiler: FunctionCompiler
     _module_compiler: ModuleCompiler
+
+    _pattern_constructor: PatternConstructor
 
     def __init__(self, state: State, context: CompilationContext):
         super().__init__(state)
@@ -1021,6 +1087,8 @@ class NodeCompiler(StatefulProcessor):
         self._class_compiler = ClassCompiler(self)
         self._function_compiler = FunctionCompiler(self)
         self._module_compiler = ModuleCompiler(self)
+
+        self._pattern_constructor = PatternConstructor(self)
 
         self._dispatcher = CompilerDispatcher.standard(self)
 
@@ -1063,6 +1131,10 @@ class NodeCompiler(StatefulProcessor):
     @property
     def module_compiler(self):
         return self._module_compiler
+
+    @property
+    def pattern_constructor(self):
+        return self._pattern_constructor
 
     # endregion Sub-Compilers
 

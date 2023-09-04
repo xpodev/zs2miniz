@@ -5,6 +5,7 @@ if TYPE_CHECKING:
 from zs.ast.node import Node
 from zs.ast.node_lib import (
     Alias,
+    Assign,
     Binary,
     Class,
     Expression,
@@ -51,6 +52,11 @@ class ResolvedStatement(ResolvedNode[_T], Generic[_T]):
 
 
 # region Concrete
+
+
+class ResolvedAssign(ResolvedExpression[Assign]):
+    left: ResolvedExpression
+    right: ResolvedExpression
 
 
 class ResolvedBinary(ResolvedExpression[Binary]):

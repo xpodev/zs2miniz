@@ -396,6 +396,13 @@ class CodeDependencyFinder(DependencyFinder):
     # region Implementation
 
     @_dep
+    def _(self, node: resolved.ResolvedAssign):
+        return [
+            *self.find_dependencies(node.left),
+            *self.find_dependencies(node.right),
+        ]
+
+    @_dep
     def _(self, node: resolved.ResolvedBinary):
         return [
             *self.find_dependencies(node.left),
