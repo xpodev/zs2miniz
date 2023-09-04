@@ -7,6 +7,8 @@ from zs.ast.node_lib import (
     Alias,
     Assign,
     Binary,
+    Block,
+    Break,
     Class,
     Expression,
     ExpressionStatement,
@@ -21,7 +23,8 @@ from zs.ast.node_lib import (
     Parameter,
     Return,
     Unary,
-    Var, Block, While, Break,
+    Var,
+    While,
 )
 
 _T = TypeVar("_T", bound=Node)
