@@ -31,7 +31,7 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
             group = group.member
         else:
             instance = None
-            group = compiler.vm.run(group.code).top()
+            group = compiler.vm.run(group.code).pop()
 
         matches = group.match(args, kwargs, strict=True, recursive=False, instance=instance)
 
@@ -50,11 +50,14 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
             *((match.call_instruction,) if match.has_callee else match.callee_instructions),
         ])
 
-    def square_call(self, compiler, group: CodeGenerationResult, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
+    def square_call(self, compiler, group: CodeGenerationResult, args: list[Argument], kwargs: dict[str, Argument]) -> ObjectProtocol:
         if kwargs:
             raise TypeError(f"Generic instantiation is not allowed with keyword arguments yet.")
 
-        group = compiler.vm.run(group.code).top()
+        if isinstance(group, BoundMemberCode):
+            group = group.member
+        else:
+            group = compiler.vm.run(group.code).top()
 
         result = []
 
@@ -70,9 +73,7 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
         if len(result) != 1:
             raise TypeError(f"Could not find a suitable overload")
 
-        return CodeGenerationResult([
-            vm.LoadObject(result[0])
-        ])
+        return result[0]
 
 
 class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
@@ -99,7 +100,7 @@ class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
             vm.CreateInstance(match.callee),
         ])
 
-    def square_call(self, compiler, code: CodeGenerationResult, args: list[Argument], kwargs: dict[str, Argument]) -> CodeGenerationResult:
+    def square_call(self, compiler, code: CodeGenerationResult, args: list[Argument], kwargs: dict[str, Argument]) -> ObjectProtocol:
         if kwargs:
             raise TypeError(f"Generic instantiation is not allowed with keyword arguments yet.")
 
@@ -107,9 +108,7 @@ class __OOPDefinitionTypeICallable(ICallable[OOPDefinitionType]):
 
         result = cls.instantiate_generic([compiler.vm.run(arg.code).pop() for arg in args])
 
-        return CodeGenerationResult([
-            vm.LoadObject(result)
-        ])
+        return result
 
 
 class __GenericClassInstanceTypeICallable(ICallable[GenericClassInstanceType]):
