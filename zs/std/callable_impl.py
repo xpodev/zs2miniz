@@ -7,7 +7,6 @@ from miniz.generic.oop import GenericClassInstanceType, GenericClassInstance
 from miniz.interfaces.overloading import Argument
 from miniz.type_system import OOPDefinitionType
 from miniz.vm import instructions as vm
-from utilz.analysis.analyzers import ResultTypeAnalyzer
 
 from utilz.callable import ICallable
 from utilz.code_generation.core import CodeGenerationResult
