@@ -1,6 +1,9 @@
 import typing
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypeVar
+
+from zs.zs2miniz.debug import DebugDatabase
 
 if typing.TYPE_CHECKING:
     from miniz.type_system import ObjectProtocol
@@ -185,11 +188,20 @@ class CompilationContext:
     _documents: dict[str, DocumentContext]
     _import_system: ImportSystem
 
+    _parent: "GlobalContext | None"
+
+    _document: DocumentContext | None
+
     def __init__(self, compiler: "ZSCompiler", *, isolated: bool = False):
         self._scope = Scope(compiler.context.scope if not isolated else None)
         self._modules = {}
         self._documents = {}
         self._import_system = ImportSystem(compiler, compiler.context.import_system if not isolated else None)
+        self._document = None
+        if not isolated:
+            self._parent = compiler.context
+        else:
+            self._parent = None
 
     @property
     def scope(self):
@@ -198,6 +210,14 @@ class CompilationContext:
     @property
     def import_system(self):
         return self._import_system
+
+    @property
+    def current_document(self):
+        return self._document
+
+    @property
+    def parent(self):
+        return self._parent
 
     def add_module(self, name: str, module: "Module", *, override: bool = False):
         if name in self._modules and not override:
@@ -236,14 +256,29 @@ class CompilationContext:
                 raise
             return default
 
+    @contextmanager
+    def document(self, document: DocumentContext):
+        document, self._document = self._document, document
+        try:
+            yield
+        finally:
+            self._document = document
+
 
 class GlobalContext(CompilationContext):
     """
     This context is shared between all Z# files executing in the current process.
     """
 
+    _debug_database: DebugDatabase
+
     def __init__(self, compiler: "ZSCompiler"):
         super().__init__(compiler, isolated=True)
+        self._debug_database = DebugDatabase()
+
+    @property
+    def debug_database(self):
+        return self._debug_database
 
     def get_global(self, name: str) -> object:
         return self.scope.lookup_name(name, recursive_lookup=False)

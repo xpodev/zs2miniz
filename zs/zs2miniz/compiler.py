@@ -15,13 +15,13 @@ from miniz.concrete.module import Module
 from miniz.concrete.oop import Class, Field, Method, MethodBody
 from miniz.concrete.overloading import OverloadGroup
 from miniz.concrete.signature import Parameter
-from miniz.core import TypeProtocol, ScopeProtocol
+from miniz.core import TypeProtocol, ScopeProtocol, ObjectProtocol
 from miniz.generic import GenericSignature, GenericParameter
 from miniz.interfaces.base import IMiniZObject
 from miniz.interfaces.function import IFunction
 from miniz.interfaces.module import IModule
-from miniz.interfaces.oop import IClass, IField, Binding, IOOPMemberDefinition, IMethod, IInterface, ITypeclass, IStructure, IOOPDefinition, IProperty
-from miniz.type_system import Any, String, Boolean
+from miniz.interfaces.oop import IClass, IField, IInterface, ITypeclass, IStructure, IProperty
+from miniz.type_system import Any, String, Boolean, Void
 from miniz.vm import instructions as vm
 from miniz.vm.instruction import Instruction
 from miniz.vm.runtime import Interpreter
@@ -35,6 +35,7 @@ from utilz.scope import IScope
 from zs.ast import resolved
 from zs.processing import StatefulProcessor, State
 from zs.utils import SingletonMeta
+from zs.zs2miniz.debug import DebugDatabase, DebugContext
 from zs.zs2miniz.errors import CodeCompilationError, OverloadMatchError
 from zs.zs2miniz.import_system import ImportResult
 from zs.zs2miniz.lib import CompilationContext
@@ -76,7 +77,7 @@ class CompilerContext:
     def compiler(self):
         return self._compiler
 
-    def cache(self, node: resolved.ResolvedNode, item: IMiniZObject | None = _SENTINEL, *, default=_SENTINEL):
+    def cache(self, node: resolved.ResolvedNode, item: _T | None = _SENTINEL, *, default=_SENTINEL) -> _T:
         return self._cache.cache(node, item, default=default)
 
     def mark_defined(self, node: resolved.ResolvedNode):
@@ -161,6 +162,13 @@ class ModuleCompiler(CompilerBase[IModule]):
     #     return group
 
 
+class VarDeclaration(resolved.ResolvedNode[resolved.Var]):
+    def __init__(self, var: Local, node: resolved.ResolvedVar):
+        super().__init__(node.node)
+        self.resolved = node
+        self.var = var
+
+
 class FunctionCompiler(CompilerBase[IFunction]):
     _function_body_compiler: "FunctionBodyCompiler"
     _function_signature_compiler: "FunctionSignatureCompiler"
@@ -179,6 +187,10 @@ class FunctionCompiler(CompilerBase[IFunction]):
     def function_signature_compiler(self):
         return self._function_signature_compiler
 
+    @property
+    def body_compiler(self):
+        return self.function_body_compiler
+
     def construct(self, node: resolved.ResolvedFunction) -> Function:
         fn = Function(node.name)
 
@@ -193,18 +205,22 @@ class FunctionCompiler(CompilerBase[IFunction]):
 
         for item in node.body.instructions:
             if isinstance(item, resolved.ResolvedVar):
-                self.construct_local(item, fn)
+                new_body.append(VarDeclaration(self.construct_local(item, fn), item))
             else:
                 new_body.append(item)
 
         node.body.instructions = new_body
 
+        self.compiler.debug_context.debug_database.create_debug_information(fn.body, self.compiler.compilation_context.current_document.info)
+
         return fn
 
-    def construct_local(self, node: resolved.ResolvedVar, fn: Function):
+    def construct_local(self, node: resolved.ResolvedVar, fn: Function) -> Local:
         local = self.context.cache(node, Local(node.name, Any))
 
         fn.locals.append(local)
+
+        return local
 
     def construct_parameters(self, node: resolved.ResolvedFunction, fn: Function):
         sig = fn.signature
@@ -243,16 +259,18 @@ class FunctionCompiler(CompilerBase[IFunction]):
 
     @_cpl
     def _(self, node: resolved.ResolvedFunctionBody, item: FunctionBody):
-        with self.compiler.expression_compiler.code_context(self._function_body_compiler):
+        with self.compiler.expression_compiler.code_context(self.body_compiler):
             if node is not None:
                 self.context.mark_defined(node)
 
-                body = self.compiler.expression_compiler.compile_code(node.instructions)
-                for instruction in body:
-                    item.instructions.append(instruction)
+                with self.compiler.debug_context.function_body(item):
+                    for instruction in node.instructions:
+                        instructions = self.compiler.expression_compiler.compile(instruction)
+                        if instructions:
+                            item.instructions.extend(instructions.code)
 
                 if node.owner.return_type is None:
-                    possible_types = ReturnTypeAnalyzer.quick_analysis(body, {}).possible_return_types
+                    possible_types = ReturnTypeAnalyzer.quick_analysis(item.instructions, {}).possible_return_types
                     if len(possible_types) != 1:
                         raise CodeCompilationError(f"Can't currently handle more than 1 path in a function", node.owner.node.return_type)
                     item.owner.signature.return_type = possible_types[0]
@@ -273,18 +291,17 @@ class FunctionCompiler(CompilerBase[IFunction]):
 
     @_cpl
     def _(self, node: resolved.ResolvedVar, item: Local):
-        with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
-            if node.type:
+        if node.type:
+            with self.compiler.expression_compiler.code_context(self._function_signature_compiler):
                 item.target_type = self.compiler.evaluate(node.type)
-            # else:
-            #     item.target_type = Any
-        with self.compiler.expression_compiler.code_context(self._function_body_compiler):
-            if node.initializer:
-                init = self.compiler.expression_compiler.compile_expression(node.initializer)
-                item.owner.body.instructions.extend([*init, vm.SetLocal(item)])
-
-                if node.type is None:
+        else:
+            with self.compiler.expression_compiler.code_context(self._function_body_compiler):
+                if node.initializer:
+                    with self.compiler.debug_context.function(item.owner):
+                        init = self.compiler.expression_compiler.compile_expression(node.initializer)
                     item.target_type = ResultTypeAnalyzer.quick_analysis(init, {}).result_type
+                else:
+                    raise CodeCompilationError(f"Variable '{node.name}' must either have a type or an initializer", node.node)
 
 
 class MethodCompiler(FunctionCompiler):
@@ -298,6 +315,10 @@ class MethodCompiler(FunctionCompiler):
     @property
     def method_body_compiler(self):
         return self._method_body_compiler
+
+    @property
+    def body_compiler(self):
+        return self.method_body_compiler
 
     def construct(self, node: resolved.ResolvedFunction) -> Method:
         fn = Method(node.name)
@@ -319,6 +340,8 @@ class MethodCompiler(FunctionCompiler):
 
         node.body.instructions = new_body
 
+        self.compiler.debug_context.debug_database.create_debug_information(fn.body, self.compiler.compilation_context.current_document.info)
+
         return fn
 
     @singledispatchmethod
@@ -326,24 +349,6 @@ class MethodCompiler(FunctionCompiler):
         super().compile(node, item)
 
     _cpl = compile.register
-
-    @_cpl
-    def _(self, node: resolved.ResolvedFunctionBody, item: FunctionBody):
-        with self.compiler.expression_compiler.code_context(self._method_body_compiler):
-            if node is not None:
-                self.context.mark_defined(node)
-
-                body = self.compiler.expression_compiler.compile_code(node.instructions)
-                for instruction in body:
-                    item.instructions.append(instruction)
-
-                if node.owner.return_type is None:
-                    possible_types = ReturnTypeAnalyzer.quick_analysis(body, {}).possible_return_types
-                    if len(possible_types) != 1:
-                        raise CodeCompilationError(f"Can't currently handle more than 1 path in a function", node.owner.node.return_type)
-                    item.owner.signature.return_type = possible_types[0]
-            else:
-                del item.instructions
 
 
 class ClassCompiler(CompilerBase[Class]):
@@ -450,6 +455,10 @@ class CodeContext:
     def code_compiler(self, value: "CodeCompiler | None"):
         self._code_compiler = value
 
+    @property
+    def debug(self):
+        return self.compiler.debug_context
+
     def compile(self, node: resolved.ResolvedNode) -> list[Instruction]:
         raise NotImplementedError
 
@@ -477,6 +486,10 @@ class CodeCompiler:
     @property
     def context(self):
         return self.compiler.context
+
+    @property
+    def debug(self):
+        return self.compiler.debug_context
 
     @property
     def stack(self):
@@ -565,7 +578,23 @@ class CodeCompiler:
 
     @_cpl
     def _(self, node: resolved.ResolvedBlock):
-        return self.compile_code(node.body)
+        result = []
+
+        nop = vm.NoOperation()
+        self.debug.emit(nop, node.node.token_info.left_bracket)
+        result.append(nop)
+
+        for item in node.body:
+            code = self.compile(item).code
+            result.extend(code)
+
+            self.debug.emit(code[0], node.node)
+
+        nop = vm.NoOperation()
+        self.debug.emit(nop, node.node.token_info.left_bracket)
+        result.append(nop)
+
+        return result
 
     @_cpl
     def _(self, node: resolved.ResolvedClass):
@@ -576,11 +605,16 @@ class CodeCompiler:
     @_cpl
     def _(self, node: resolved.ResolvedExpressionStatement):
         try:
-            return self.compile(node.expression)
+            code = self.compile(node.expression).code
+            result_type = ResultTypeAnalyzer.quick_analysis(code, {}).result_type
+            if result_type is not Void:
+                code.append(vm.Pop())
+            self.debug.emit(code[0], node.node.span)
+            return code
         except CodeCompilationError as e:
             self.compiler.state.error(e.message, e.node)
             raise e
-            return ()
+            # return ()
 
     @_cpl
     def _(self, node: resolved.ResolvedFunctionCall):
@@ -610,8 +644,10 @@ class CodeCompiler:
             )
 
         callable_code = self.compile(node.callable)
-        callable_result = code_analyzer.analyze(callable_code.code, _context)
-        callable_type: TypeProtocol = callable_result.additional_information[ResultTypeAnalyzer].result_type
+        if isinstance(callable_code, BoundMemberCode):
+            callable_type = callable_code.member.runtime_type
+        else:
+            callable_type: TypeProtocol = code_analyzer.analyze(callable_code.code, _context).additional_information[ResultTypeAnalyzer].result_type
 
         del _context
 
@@ -629,11 +665,17 @@ class CodeCompiler:
         except OverloadMatchError as e:
             raise CodeCompilationError(f"Could not find a suitable overload for function '{e.group.name}' with types ({e.types})", node.node)
 
+        if not isinstance(result, CodeGenerationResult):
+            result = [vm.LoadObject(result)]
+            # self.debug.emit(result.code[0], node.node)
+
         return result
 
     @_cpl
     def _(self, node: resolved.ResolvedIf):
         condition = self.compile_expression(node.condition)
+
+        self.debug.emit(condition[0], node.node.condition)
 
         result_type = ResultTypeAnalyzer.quick_analysis(condition, {}).result_type
 
@@ -647,18 +689,20 @@ class CodeCompiler:
             condition = result.code
 
         if_true = self.compile(node.if_body).code
+        false_start = false_end = vm.NoOperation()
         if node.else_body:
             if_false = self.compile(node.else_body).code
-            if_false.append(vm.NoOperation())
+            false_start = if_false[0]
         else:
-            if_false = [vm.NoOperation()]
+            if_false = ()
 
         return [
             *condition,
-            vm.JumpIfFalse(if_false[0]),
+            vm.JumpIfFalse(false_start),
             *if_true,
-            vm.Jump(if_false[-1]),
-            *if_false
+            vm.Jump(false_end),
+            *if_false,
+            false_end
         ]
 
     @_cpl
@@ -700,6 +744,8 @@ class CodeCompiler:
     @_cpl
     def _(self, node: resolved.ResolvedWhile):
         condition = self.compile_expression(node.condition)
+
+        self.debug.emit(condition[0], node.node.condition)
 
         result_type = ResultTypeAnalyzer.quick_analysis(condition, {}).result_type
 
@@ -880,8 +926,20 @@ class FunctionBodyCompiler(CodeContext):
             if isinstance(result, CodeGenerationResult):
                 result = result.code
         else:
-            result = ()
-        return [*result, vm.Return()]
+            result = (vm.NoOperation(),)
+        result = [*result, vm.Return()]
+        self.debug.emit(result[0], node.node)
+        return result
+
+    @_cpl
+    def _(self, node: VarDeclaration):
+        if node.resolved.initializer:
+            code = self.code_compiler.compile(node.resolved.initializer)
+            if isinstance(code, CodeGenerationResult):
+                code = code.code
+            code.append(vm.SetLocal(node.var))
+            self.debug.emit(code[0], node.node)
+            return code
 
 
 class MethodBodyCompiler(FunctionBodyCompiler):
@@ -1073,6 +1131,8 @@ class NodeCompiler(StatefulProcessor):
 
     _pattern_constructor: PatternConstructor
 
+    _debug_context: DebugContext
+
     def __init__(self, state: State, context: CompilationContext):
         super().__init__(state)
 
@@ -1094,6 +1154,8 @@ class NodeCompiler(StatefulProcessor):
 
         self._compilation_context = context
 
+        self._debug_context = DebugContext(context.parent.debug_database)
+
     @property
     def vm(self):
         return self._vm
@@ -1109,6 +1171,10 @@ class NodeCompiler(StatefulProcessor):
     @property
     def compilation_context(self):
         return self._compilation_context
+
+    @property
+    def debug_context(self):
+        return self._debug_context
 
     # region Sub-Compilers
 
@@ -1164,3 +1230,17 @@ class NodeCompiler(StatefulProcessor):
         if expression is None:
             return None
         return self.vm.run(self.expression_compiler.compile_expression(expression)).pop(default=None)
+
+    def get_type_from_expression(self, expression: resolved.ResolvedExpression, default=_SENTINEL):
+        result = self.get_value_from_expression(expression, default=default)
+        assert isinstance(result, TypeProtocol)
+        return result
+
+    def get_value_from_expression(self, expression: resolved.ResolvedExpression, default=_SENTINEL):
+        result = self.expression_compiler.compile_expression(expression)
+        if not isinstance(result, ObjectProtocol):
+            if default is _SENTINEL:
+                result = self.vm.run(result).pop()
+            else:
+                result = self.vm.run(result).pop(default=default)
+        return result
