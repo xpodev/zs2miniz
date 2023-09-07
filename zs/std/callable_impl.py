@@ -1,3 +1,5 @@
+import typing
+
 from miniz.concrete.oop import Class
 from miniz.concrete.overloading import OverloadGroup, OverloadGroupType
 from miniz.core import ObjectProtocol
@@ -15,8 +17,12 @@ from utilz.scope import IScope
 from zs.zs2miniz.errors import OverloadMatchError
 
 
+if typing.TYPE_CHECKING:
+    from zs.zs2miniz.compiler import NodeCompiler
+
+
 class __OverloadGroupICallable(ICallable[OverloadGroupType]):
-    def curvy_call(self, compiler, group: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
+    def curvy_call(self, compiler: "NodeCompiler", group: CodeGenerationResult, args: list[Argument], kwargs: list[tuple[str, Argument]]) -> CodeGenerationResult:
         if isinstance(group, BoundMemberCode):
             if group.instance:
                 instance = Argument(group.instance, group.member.owner)
