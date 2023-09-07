@@ -13,7 +13,7 @@ if typing.TYPE_CHECKING:
     from miniz.concrete.module import Module
     from zs.zs_compiler import ZSCompiler
 
-from zs.text.file_info import DocumentInfo
+from utilz.debug.file_info import DocumentInfo
 from zs.zs2miniz.errors import NameNotFoundError
 
 _T = TypeVar("_T")

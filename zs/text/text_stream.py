@@ -1,6 +1,6 @@
 import io
 
-from .file_info import Position
+from utilz.debug.file_info import Position
 
 
 __all__ = [

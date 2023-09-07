@@ -3,6 +3,7 @@ __all__ = [
 ]
 
 
+from utilz.debug.file_info import Span
 class TokenInfo:
     def __str__(self):
         try:

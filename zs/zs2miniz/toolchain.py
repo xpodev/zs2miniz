@@ -3,9 +3,10 @@ from enum import Enum
 from pathlib import Path
 
 # from utils import DependencyGraph
+from utilz.debug.file_info import DocumentInfo
 from zs.processing import State, StatefulProcessor
-from zs.text.file_info import DocumentInfo, SourceFile
 from zs.text.parser import Parser
+from zs.text.source_file import SourceFile
 from zs.text.token_stream import TokenStream
 from zs.text.tokenizer import Tokenizer
 from zs.zs2miniz.ast_flattener import ASTFlattener

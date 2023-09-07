@@ -1,6 +1,6 @@
 from enum import Enum
 
-from .file_info import Span
+from utilz.debug.file_info import Span
 
 
 __all__ = [

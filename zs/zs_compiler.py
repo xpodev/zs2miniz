@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from zs.processing import State, StatefulProcessor
-from zs.text.file_info import DocumentInfo
+from utilz.debug.file_info import DocumentInfo
 from zs.utils import SingletonMeta
 from zs.zs2miniz.lib import DocumentContext, GlobalContext
 from zs.zs2miniz.toolchain import Toolchain, ToolchainResult

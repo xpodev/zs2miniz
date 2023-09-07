@@ -1,6 +1,7 @@
 from typing import Iterable
 
-from .file_info import SourceFile, Span, Position
+from utilz.debug.file_info import Span, Position
+from .source_file import SourceFile
 from .text_stream import TextStream
 from .token import Token, TokenType
 
