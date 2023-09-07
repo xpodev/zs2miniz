@@ -1,5 +1,6 @@
 from typing import TypeVar, Generic, Optional, Union
 
+from utilz.debug.file_info import Span
 from ..text import token_info_lib as token_info
 from ..text.token import Token
 from .node import Node
@@ -55,6 +56,10 @@ class Assign(Node[token_info.Assign]):
         self.left = left
         self.right = right
 
+    @property
+    def span(self):
+        return Span.combine(self.left.span, self.right.span)
+
 
 class Binary(Expression[token_info.Binary]):
     left: Expression
@@ -64,6 +69,10 @@ class Binary(Expression[token_info.Binary]):
         super().__init__(token_info.Binary(_operator))
         self.left = left
         self.right = right
+
+    @property
+    def span(self):
+        return Span.combine(self.left.span, self.right.span)
 
 
 class Block(Node[token_info.Block]):
@@ -149,6 +158,10 @@ class ExpressionStatement(Node[token_info.ExpressionStatement]):
     def __init__(self, expression: Expression, _semicolon: Token):
         super().__init__(token_info.ExpressionStatement(_semicolon))
         self.expression = expression
+
+    @property
+    def span(self):
+        return Span.combine(self.expression.span, super().span)
 
 
 class Parameter(Node[token_info.Parameter]):
@@ -254,6 +267,10 @@ class FunctionCall(Expression[token_info.FunctionCall]):
             self.operator = "[]"
         else:
             raise ValueError("Call operator must be either (), [] or {}")
+
+    @property
+    def span(self):
+        return Span.combine(self.callable.span, super().span)
 
 
 class Identifier(Expression[token_info.Identifier]):
@@ -367,6 +384,10 @@ class MemberAccess(Expression[token_info.MemberAccess]):
         super().__init__(token_info.MemberAccess(_dot))
         self.object = expr
         self.member = member
+
+    @property
+    def span(self):
+        return Span.combine(self.object.span, self.member.span)
 
 
 class Module(Node[token_info.Module]):

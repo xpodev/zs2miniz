@@ -18,5 +18,9 @@ class Node(Generic[TokenInfoT]):
     def token_info(self):
         return self._token_info
 
+    @property
+    def span(self):
+        return self.token_info.span
+
     def __str__(self):
         return str(self._token_info)
