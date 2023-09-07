@@ -78,7 +78,7 @@ class Tokenizer(StatefulProcessor):
             yield self._token(TokenType.EOF, self._stream.peek())
 
     def _token(self, typ: TokenType, value: str):
-        token = Token(typ, value, Span(self._start, self._stream.position, self._stream.text))
+        token = Token(typ, value, Span(self._start, self._stream.position))
         self._stream.clear()
         self._start = self._stream.position
         return token
