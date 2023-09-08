@@ -580,19 +580,19 @@ class CodeCompiler:
     def _(self, node: resolved.ResolvedBlock):
         result = []
 
-        nop = vm.NoOperation()
-        self.debug.emit(nop, node.node.token_info.left_bracket)
-        result.append(nop)
+        # nop = vm.NoOperation()
+        # self.debug.emit(nop, node.node.token_info.left_bracket)
+        # result.append(nop)
 
         for item in node.body:
             code = self.compile(item).code
             result.extend(code)
 
-            self.debug.emit(code[0], node.node)
+            # self.debug.emit(code[0], node.node)
 
-        nop = vm.NoOperation()
-        self.debug.emit(nop, node.node.token_info.left_bracket)
-        result.append(nop)
+        # nop = vm.NoOperation()
+        # self.debug.emit(nop, node.node.token_info.left_bracket)
+        # result.append(nop)
 
         return result
 
