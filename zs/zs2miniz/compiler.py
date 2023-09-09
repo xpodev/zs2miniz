@@ -470,6 +470,8 @@ class CodeCompiler:
 
     _compiler: "NodeCompiler"
 
+    _loop: "LoopBodyCompiler"
+
     def __init__(self, compiler: "NodeCompiler"):
         self._compiler = compiler
 
@@ -477,7 +479,7 @@ class CodeCompiler:
 
         self._code_context_stack = [TopLevelCodeCompiler(self)]
 
-        LoopBodyCompiler(compiler)
+        self._loop = LoopBodyCompiler(compiler)
 
     @property
     def compiler(self):
@@ -758,8 +760,8 @@ class CodeCompiler:
             result = to_bool.runtime_type.curvy_call(self.compiler, to_bool, [arg], [])
             condition = result.code
 
-        cpl = LoopBodyCompiler(...)
-        with self.code_context(cpl), cpl.node(node) as ctx:
+        # cpl = LoopBodyCompiler(...)
+        with self.code_context(self._loop), self._loop.node(node) as ctx:
             if_true = [ctx.continue_target]
             if_true.extend(self.compile(node.while_body).code)
             if node.else_body:
@@ -986,7 +988,7 @@ class FunctionSignatureCompiler(CodeContext):
         return [vm.LoadObject(parameter)]
 
 
-class LoopBodyCompiler(CodeContext, metaclass=SingletonMeta):
+class LoopBodyCompiler(CodeContext):
     _cache: dict[resolved.ResolvedNode, LoopingCode]
 
     def __init__(self, compiler: "NodeCompiler"):
