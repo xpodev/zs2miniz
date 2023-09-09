@@ -694,7 +694,7 @@ class CodeCompiler:
             if_false = self.compile(node.else_body).code
             false_start = if_false[0]
         else:
-            if_false = (false_start,)
+            if_false = ()
 
         return [
             *condition,
