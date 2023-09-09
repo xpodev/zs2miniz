@@ -166,12 +166,14 @@ class ExpressionStatement(Node[token_info.ExpressionStatement]):
 
 class Parameter(Node[token_info.Parameter]):
     name: "Identifier"
+    alias: "Identifier | None"
     type: Expression | None
     initializer: Expression | None
 
     def __init__(
             self,
             name: "Identifier",
+            alias: "Identifier | None",
             colon: Token | None,
             type: Expression | None,
             equals: Token | None,
@@ -179,6 +181,7 @@ class Parameter(Node[token_info.Parameter]):
     ):
         super().__init__(token_info.Parameter(colon, equals))
         self.name = name
+        self.alias = alias
         self.type = type
         self.initializer = initializer
 

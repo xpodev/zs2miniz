@@ -303,7 +303,7 @@ class NodeRegistry(_SubProcessor):
     def _(self, node: nodes.Parameter):
         result = resolved.ResolvedParameter(node)
 
-        self.context.current_scope.create_name(result.name, result)
+        self.context.current_scope.create_name(result.alias if result.alias else result.name, result)
 
         if node.type is not None:
             result.type = self.register(node.type)

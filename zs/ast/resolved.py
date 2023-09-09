@@ -233,6 +233,10 @@ class ResolvedParameter(ResolvedNode[Parameter]):
     def name(self):
         return self.node.name.name
 
+    @property
+    def alias(self):
+        return self.node.alias.name if self.node.alias else None
+
 
 class ResolvedReturn(ResolvedStatement[Return]):
     expression: ResolvedExpression

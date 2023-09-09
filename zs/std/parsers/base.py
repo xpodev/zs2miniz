@@ -186,6 +186,11 @@ def parse_typed_name(parser: Parser) -> TypedName:
 def parse_parameter(parser: Parser) -> Parameter:
     name = _identifier(parser)
 
+    if parser.token("as", eat=True):
+        alias = _identifier(parser)
+    else:
+        alias = None
+
     colon = type = None
     if parser.token(':'):
         colon = parser.eat(':')
@@ -196,7 +201,7 @@ def parse_parameter(parser: Parser) -> Parameter:
         equals = parser.eat('=')
         initializer = parser.next("Expression")
 
-    return Parameter(name, colon, type, equals, initializer)
+    return Parameter(name, alias, colon, type, equals, initializer)
 
 
 @subparser('{')
