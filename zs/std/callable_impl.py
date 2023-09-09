@@ -29,9 +29,11 @@ class __OverloadGroupICallable(ICallable[OverloadGroupType]):
             else:
                 instance = None
             group = group.member
-        else:
+        elif isinstance(group, CodeGenerationResult):
             instance = None
             group = compiler.vm.run(group.code).pop()
+        else:
+            instance = None
 
         matches = group.match(args, kwargs, strict=True, recursive=False, instance=instance)
 
