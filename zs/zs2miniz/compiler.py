@@ -677,7 +677,7 @@ class CodeCompiler:
     def _(self, node: resolved.ResolvedIf):
         condition = self.compile_expression(node.condition)
 
-        self.debug.emit(condition[0], node.node.condition)
+        self.debug.emit(condition[0], Span.combine(node.node.token_info.keyword_if.span, node.node.token_info.right_parenthesis.span))
 
         result_type = ResultTypeAnalyzer.quick_analysis(condition, {}).result_type
 
@@ -747,7 +747,7 @@ class CodeCompiler:
     def _(self, node: resolved.ResolvedWhile):
         condition = self.compile_expression(node.condition)
 
-        self.debug.emit(condition[0], node.node.condition)
+        self.debug.emit(condition[0], Span.combine(node.node.token_info.keyword_while.span, node.node.token_info.right_parenthesis.span))
 
         result_type = ResultTypeAnalyzer.quick_analysis(condition, {}).result_type
 
