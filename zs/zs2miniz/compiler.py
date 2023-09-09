@@ -943,6 +943,7 @@ class FunctionBodyCompiler(CodeContext):
             code.append(vm.SetLocal(node.var))
             self.debug.emit(code[0], node.node)
             return code
+        return []
 
 
 class MethodBodyCompiler(FunctionBodyCompiler):
