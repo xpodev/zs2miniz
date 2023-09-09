@@ -1021,8 +1021,10 @@ class LoopBodyCompiler(CodeContext):
     def _(self, node: resolved.ResolvedBreak):
         loop = node.loop if node.loop is not None else self._loop
         loop_code = self._cache[loop]
+        jmp = vm.Jump(loop_code.break_target)
+        self.debug.emit(jmp, node.node)
         return [
-            vm.Jump(loop_code.break_target)
+            jmp
         ]
 
 
