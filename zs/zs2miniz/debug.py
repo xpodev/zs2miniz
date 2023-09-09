@@ -79,15 +79,19 @@ class DebugContext:
         if self.current_debug_information:
             sp = SequencePoint()
             if isinstance(node, Node):
-                span = node.token_info.span
+                span = node.span
             elif isinstance(node, Token):
                 span = node.span
             elif isinstance(node, Span):
                 span = node
+            else:
+                raise TypeError
             sp.span = span
             sp.instruction = inst
             sp.document = self.current_debug_information.document
             self.current_debug_information.sequence_points.append(sp)
+        else:
+            raise TypeError
 
     # def append(self, sp: SequencePoint):
     #     self._cache.append(sp)
