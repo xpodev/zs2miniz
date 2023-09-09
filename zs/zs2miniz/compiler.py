@@ -30,6 +30,7 @@ from utilz.analysis.analyzers.return_type_analyzer import ReturnTypeAnalyzer
 from utilz.callable import ICallable
 from utilz.code_generation.core import CodeGenerationResult
 from utilz.code_generation.code_objects import BoundMemberCode, LoopingCode
+from utilz.debug.file_info import Span
 from utilz.pattern_matching import patterns, IPattern
 from utilz.scope import IScope
 from zs.ast import resolved
@@ -334,7 +335,7 @@ class MethodCompiler(FunctionCompiler):
 
         for item in node.body.instructions:
             if isinstance(item, resolved.ResolvedVar):
-                self.construct_local(item, fn)
+                new_body.append(VarDeclaration(self.construct_local(item, fn), item))
             else:
                 new_body.append(item)
 
