@@ -1,10 +1,22 @@
 from miniz.concrete.module import Module
-from miniz.type_system import Any, Boolean, Null, Object, String, Type, Unit, Void
+from miniz.type_system import Any, Boolean, Null, Object, String, Type, Unit, Void, Int64, UInt, Int, UInt64, UInt32, Int32, UInt16, Int16, UInt8, Int8, Float32, Float64
 
 module = Module("core")
 
 module.types.append(Any)
 module.types.append(Boolean)
+module.types.append(Int8)
+module.types.append(UInt8)
+module.types.append(Int16)
+module.types.append(UInt16)
+module.types.append(Int32)
+module.types.append(UInt32)
+module.types.append(Int64)
+module.types.append(UInt64)
+module.types.append(Int)
+module.types.append(UInt)
+module.types.append(Float32)
+module.types.append(Float64)
 module.types.append(Null)
 module.types.append(Object)
 module.types.append(String)

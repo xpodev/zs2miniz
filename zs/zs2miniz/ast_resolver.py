@@ -3,7 +3,7 @@ from functools import singledispatchmethod
 from typing import TypeVar, overload
 
 from miniz.interfaces.base import IMiniZObject
-from miniz.type_system import ObjectProtocol, Null, Boolean, Unit, String
+from miniz.type_system import ObjectProtocol, Null, Boolean, Unit, String, Int32, Int, UInt, Int8, Int16, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64
 from zs.ast.node import Node
 from zs.processing import StatefulProcessor, State
 from zs.text.token import TokenType
@@ -272,9 +272,10 @@ class NodeRegistry(_SubProcessor):
 
     @_reg
     def _(self, node: nodes.Literal):
+        text = node.token_info.literal.value
         match node.token_info.literal.type:
             case TokenType.Identifier:
-                match node.token_info.literal.value:
+                match text:
                     case "null":
                         value = Null.NullInstance
                     case "true":
@@ -284,9 +285,47 @@ class NodeRegistry(_SubProcessor):
                     case _:
                         raise NotImplementedError
             case TokenType.String:
-                value = String.create_from(node.token_info.literal.value)
+                value = String.create_from(text)
             case TokenType.Unit:
                 value = Unit.UnitInstance
+            case (TokenType.Decimal | TokenType.Hex):
+                if text.endswith('I'):
+                    value = Int.create_from(text[:-1])
+                elif text.endswith('U'):
+                    value = UInt.create_from(text[:-1])
+                elif 'i' in text:
+                    text, size = text.split('i')
+                    value = {
+                        "8": Int8,
+                        "16": Int16,
+                        "32": Int32,
+                        "64": Int64,
+                    }[size].create_from(text)
+                elif 'u' in text:
+                    text, size = text.split('u')
+                    value = {
+                        "8": UInt8,
+                        "16": UInt16,
+                        "32": UInt32,
+                        "64": UInt64,
+                    }[size].create_from(text)
+                elif 'f' in text:
+                    text, size = text.split('f')
+                    value = {
+                        "32": Float32,
+                        "64": Float64,
+                    }[size].create_from(text)
+                else:
+                    value = Int32.create_from(text)
+            case TokenType.Real:
+                if 'f' in text:
+                    text, size = text.split('f')
+                    value = {
+                        "32": Float32,
+                        "64": Float64,
+                    }[size].create_from(text)
+                else:
+                    value = Float32.create_from(text)
             case _:
                 raise TypeError(f"Token type \'{node.token_info.literal.type}\' is not yet implemented")
         return resolved.ResolvedObject(value)
