@@ -716,8 +716,13 @@ class CodeCompiler:
         if node.else_body:
             if_false = self.compile(node.else_body).code
             false_start = if_false[0]
+            end = node.node.if_false
         else:
             if_false = ()
+            end = node.node.if_true
+
+        if isinstance(end, resolved.Block):
+            self.debug.emit(false_end, node.node.if_false.token_info.right_bracket)
 
         return [
             *condition,
