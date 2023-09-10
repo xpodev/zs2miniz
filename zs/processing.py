@@ -46,6 +46,7 @@ class State:
         self._messages = []
         self._processor = None
         self._cache = None
+        self._has_errors = False
 
     @property
     def is_running(self):
@@ -58,6 +59,13 @@ class State:
     @property
     def processor(self):
         return self._processor
+
+    @property
+    def has_errors(self):
+        if self._has_errors:
+            return self._has_errors
+        self._has_errors = any(msg.type == MessageType.Error for msg in self.messages)
+        return self._has_errors
 
     def error(self, message: str, origin: Any = None):
         self.message(MessageType.Error, message, origin)

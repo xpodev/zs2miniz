@@ -856,6 +856,9 @@ class TopLevelCompiler(CompilerBase):
 
         result = self.compiler.compilation_context.import_system.import_from(item.source.native)
 
+        if self.state.has_errors:
+            return
+
         for imported_name in node.imported_names:
             self.context.cache(imported_name, result.get_name(imported_name.name))
             self.context.mark_defined(imported_name)
@@ -1268,12 +1271,16 @@ class NodeCompiler(StatefulProcessor):
         return self.operators[name]
 
     def declare(self, nodes: list[resolved.ResolvedNode] | resolved.ResolvedNode) -> list[tuple[resolved.ResolvedNode, IMiniZObject]] | IMiniZObject:
+        self.run()
+
         if not isinstance(nodes, list):
             return self.context.cache(nodes, self.top_level_compiler.construct(nodes))
 
         return list(map(lambda n: (n, self.declare(n)), nodes))
 
     def define(self, pairs: list[tuple[resolved.ResolvedNode, IMiniZObject]] | tuple[resolved.ResolvedNode, IMiniZObject]) -> list[IMiniZObject] | IMiniZObject | None:
+        self.run()
+
         if not isinstance(pairs, list):
             return self.dispatcher.compile(*pairs)
 

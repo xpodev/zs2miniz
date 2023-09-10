@@ -7,6 +7,7 @@ from miniz.type_system import ObjectProtocol, Null, Boolean, Unit, String
 from zs.ast.node import Node
 from zs.processing import StatefulProcessor, State
 from zs.text.token import TokenType
+from zs.zs2miniz.errors import NameNotFoundError
 from zs.zs2miniz.lib import Scope
 
 import zs.ast.node_lib as nodes
@@ -423,7 +424,10 @@ class NodeResolver(_SubProcessor):
 
     @_res
     def _(self, node: resolved.ResolvedExpressionStatement):
-        node.expression = self.resolve(node.expression)
+        try:
+            node.expression = self.resolve(node.expression)
+        except NameNotFoundError:
+            ...
 
     @_res
     def _(self, node: resolved.ResolvedFunction):
@@ -496,10 +500,15 @@ class NodeResolver(_SubProcessor):
 
     @_res
     def _(self, node: nodes.Identifier):
-        value = self.context.current_scope.lookup_name(node.name)
-        if isinstance(value, (ObjectProtocol, IMiniZObject)):
-            value = resolved.ResolvedObject(value)
-        return value
+        try:
+            value = self.context.current_scope.lookup_name(node.name)
+        except NameNotFoundError as e:
+            self.state.error(e.args[0], node)
+            raise
+        else:
+            if isinstance(value, (ObjectProtocol, IMiniZObject)):
+                value = resolved.ResolvedObject(value)
+            return value
 
 
 class NodeProcessor(StatefulProcessor):
@@ -531,6 +540,7 @@ class NodeProcessor(StatefulProcessor):
         self.context.inject(node)
 
     def resolve(self) -> list[resolved.ResolvedNode]:
+        self.run()
         result = []
 
         for node in self._nodes:

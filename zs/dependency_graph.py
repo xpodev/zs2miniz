@@ -32,6 +32,8 @@ class DependencyGraph(Generic[T]):
         self._graph = {}
 
     def order_dependencies(self, state: State) -> list[list[T]]:
+        state.reset()
+
         visit_status: dict[T, NodeStatus] = {
             item: NodeStatus.NotVisited for item in self._graph
         }

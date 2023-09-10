@@ -91,6 +91,9 @@ class Toolchain(StatefulProcessor):
         if (document := self.context.get_document_context(info.path_string, default=None)) is None:
             document = self.context.create_document_context(info.path_string)
 
+        if self.state.has_errors:
+            return document
+
         with self.context.document(document):
             match result:
                 case ToolchainResult.Tokens:
@@ -99,11 +102,17 @@ class Toolchain(StatefulProcessor):
                     return document.tokens
                 case ToolchainResult.AST:
                     if document.nodes is None:
-                        document.nodes = self.parser.parse(TokenStream(self.execute_document(info, result=ToolchainResult.Tokens), info.path_string))
+                        tokens = TokenStream(self.execute_document(info, result=ToolchainResult.Tokens), info.path_string)
+                        if self.state.has_errors:
+                            return None
+                        document.nodes = self.parser.parse(tokens)
                     return document.nodes
                 case ToolchainResult.ResolvedAST:
                     if document.resolved_nodes is None:
-                        for node in self.execute_document(info, result=ToolchainResult.AST):
+                        nodes = self.execute_document(info, result=ToolchainResult.AST)
+                        if self.state.has_errors:
+                            return None
+                        for node in nodes:
                             self.resolver.add_node(node)
                         document.resolved_nodes = self.resolver.resolve()
                         document.node_scope = self.resolver.context.current_scope
@@ -112,6 +121,8 @@ class Toolchain(StatefulProcessor):
                     if document.build_order is None:
                         dependency_finder = DependencyFinderDispatcher(self.state)
                         nodes = self.execute_document(info, result=ToolchainResult.ResolvedAST)
+                        if self.state.has_errors:
+                            return None
                         nodes = sum(map(ASTFlattener(self.state).flatten_tree, nodes), [])
                         graph = DependencyGraph()
                         with dependency_finder.finder(dependency_finder.runtime_finder), dependency_finder.graph(graph):
@@ -122,7 +133,11 @@ class Toolchain(StatefulProcessor):
                 case ToolchainResult.MiniZObjects:
                     if document.objects is None:
                         build_order = self.execute_document(info, result=ToolchainResult.BuildOrder)
+                        if self.state.has_errors:
+                            return None
                         mapping = dict(self.compiler.declare(self.execute_document(info, result=ToolchainResult.ResolvedAST)))
+                        if self.state.has_errors:
+                            return None
                         nodes = []
                         for build in build_order:
                             for node in build:
@@ -134,6 +149,8 @@ class Toolchain(StatefulProcessor):
                         for node in self.resolver.context.injected_nodes:
                             nodes.append((node, self.compiler.declare(node)))
                         document.objects = self.compiler.define(nodes)
+                        if self.state.has_errors:
+                            return None
                         for name, item in self.resolver.context.current_scope.defined_names:
                             document.object_scope.create_name(name, self.compiler.context.cache(item))
                         for name, item in self.resolver.context.current_scope.referred_names:
@@ -141,6 +158,7 @@ class Toolchain(StatefulProcessor):
                     return document.objects
                 case ToolchainResult.DocumentContext:
                     self.execute_document(info, result=ToolchainResult.MiniZObjects)
+                    self.state.reset()
                     return document
                 case _:
                     raise ValueError(f"Unexpected result type: \'{result}\'")
