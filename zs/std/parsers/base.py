@@ -412,10 +412,10 @@ def parse_function(parser: Parser) -> Function:
         _semicolon = None
         _left_bracket = parser.eat('{')
 
-        # body = _many(_next("Function.Body"))(parser)
         body = []
-        while not parser.token('}'):
-            body.append(_next("Function.Body")(parser))
+        with parser.context("Function.Body"):
+            while not parser.token('}'):
+                body.append(parser.next())
 
         _right_bracket = parser.eat('}')
 
@@ -518,8 +518,9 @@ def parse_module(parser: Parser) -> Module:
         _left_bracket = parser.eat('{')
 
         # items = _many(_next("Document"))(parser)
-        while not parser.token('}'):
-            items.append(parser.next("Document"))
+        with parser.context("Document"):
+            while not parser.token('}'):
+                items.append(parser.next())
 
         _right_bracket = parser.eat('}')
 
