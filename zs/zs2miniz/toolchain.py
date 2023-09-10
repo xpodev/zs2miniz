@@ -12,7 +12,7 @@ from zs.zs2miniz.ast_flattener import ASTFlattener
 from zs.zs2miniz.ast_resolver import NodeProcessor
 from zs.zs2miniz.compiler import NodeCompiler
 from zs.zs2miniz.dependency_finder import DependencyFinderDispatcher, DependencyGraph
-from zs.zs2miniz.lib import CompilationContext, DocumentContext
+from zs.zs2miniz.lib import CompilationContext
 
 if typing.TYPE_CHECKING:
     from zs.zs_compiler import ZSCompiler
