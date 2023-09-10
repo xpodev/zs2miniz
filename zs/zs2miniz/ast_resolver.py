@@ -203,9 +203,9 @@ class NodeRegistry(_SubProcessor):
             if node.return_type is not None:
                 result.return_type = self.register(node.return_type)
 
-            if node.body is not None:
-                with self.context.create_scope(result):
-                    result.body.instructions = list(filter(bool, map(self.register, node.body)))
+            # if node.body is not None:
+                # with self.context.create_scope(result):
+                    # result.body.instructions = list(filter(bool, map(self.register, node.body)))
 
         return result
 
@@ -437,7 +437,7 @@ class NodeResolver(_SubProcessor):
             node.variadic_positional_parameter = self.resolve(node.variadic_positional_parameter)
             node.variadic_named_parameter = self.resolve(node.variadic_named_parameter)
             node.return_type = self.resolve(node.return_type)
-            node.body.instructions = list(map(self.resolve, node.body.instructions)) if node.body.instructions is not None else None
+            node.body.instructions = list(map(self.resolve, filter(bool, map(self.processor.registry.register, node.node.body)))) if node.node.body is not None else None
 
     @_res
     def _(self, node: resolved.ResolvedFunctionCall):
@@ -533,6 +533,14 @@ class NodeProcessor(StatefulProcessor):
     def context(self):
         return self._context
 
+    @property
+    def registry(self):
+        return self._registry
+
+    @property
+    def resolver(self):
+        return self._resolver
+
     def add_node(self, node: Node):
         self._nodes.append(node)
 
@@ -541,6 +549,7 @@ class NodeProcessor(StatefulProcessor):
 
     def resolve(self) -> list[resolved.ResolvedNode]:
         self.run()
+
         result = []
 
         for node in self._nodes:
