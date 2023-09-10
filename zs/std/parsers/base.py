@@ -446,6 +446,15 @@ def parse_class(parser: Parser) -> Class:
 
     name = _one_of(_identifier, _string)(parser, default=None)
 
+    generic = None
+    if parser.token('[', eat=True):
+        generic = []
+        while True:
+            generic.append(_identifier(parser))
+            if not parser.token(',', eat=True):
+                break
+        parser.eat(']')
+
     if parser.token('('):
         _left_parenthesis = parser.eat('(')
         metaclass = parser.next("Expression")
@@ -482,6 +491,7 @@ def parse_class(parser: Parser) -> Class:
     return Class(
         keyword,
         name,
+        generic,
         # _left_parenthesis,
         # metaclass,
         # _right_parenthesis,

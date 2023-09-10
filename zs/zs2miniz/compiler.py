@@ -20,7 +20,7 @@ from miniz.generic import GenericSignature, GenericParameter
 from miniz.interfaces.base import IMiniZObject
 from miniz.interfaces.function import IFunction
 from miniz.interfaces.module import IModule
-from miniz.interfaces.oop import IClass, IField, IInterface, ITypeclass, IStructure, IProperty
+from miniz.interfaces.oop import IClass, IField, IInterface, ITypeclass, IStructure, IProperty, IOOPDefinition
 from miniz.type_system import Any, String, Boolean, Void
 from miniz.vm import instructions as vm
 from miniz.vm.instruction import Instruction
@@ -363,6 +363,11 @@ class ClassCompiler(CompilerBase[Class]):
     def construct(self, node: resolved.ResolvedClass) -> Class:
         cls = Class(node.name)
 
+        if node.generic:
+            cls.make_generic()
+            for generic in node.generic:
+                cls.generic_parameters.append(self.context.cache(generic, GenericParameter(generic.name)))
+
         for item in node.items:
             self.context.cache(item, self._construct(item, cls))
 
@@ -412,7 +417,11 @@ class ClassCompiler(CompilerBase[Class]):
 
     @_cpl
     def _(self, node: resolved.ResolvedClass, item: Class):
-        bases = list(map(self.compiler.evaluate, node.bases))
+        if item.has_generic_parameters:
+            with self.compiler.expression_compiler.code_context(self.compiler.generic_context_compiler):
+                bases = list(map(self.compiler.evaluate, node.bases))
+        else:
+            bases = list(map(self.compiler.evaluate, node.bases))
 
         if bases:
             if isinstance(bases[0], (IClass, GenericClassInstance)):
@@ -425,7 +434,18 @@ class ClassCompiler(CompilerBase[Class]):
 
     @_cpl
     def _(self, node: resolved.ResolvedVar, item: Field):
-        item.field_type = self.compiler.evaluate(node.type)
+        owner = item.owner
+        while True:
+            if owner.has_generic_parameters:
+                break
+            if not isinstance(owner.owner, IOOPDefinition):
+                break
+            owner = owner.owner
+        if owner.has_generic_parameters:
+            with self.compiler.expression_compiler.code_context(self.compiler.generic_context_compiler):
+                item.field_type = self.compiler.evaluate(node.type)
+        else:
+            item.field_type = self.compiler.evaluate(node.type)
 
 
 class CodeContext:
@@ -1028,6 +1048,25 @@ class LoopBodyCompiler(CodeContext):
         ]
 
 
+class GenericContextCompiler(CodeContext):
+    def compile(self, node: resolved.ResolvedNode) -> list[Instruction]:
+        return self._compile(node)
+
+    @singledispatchmethod
+    def _compile(self, node: resolved.ResolvedNode):
+        ...
+
+    _cpl = _compile.register
+
+    @_cpl
+    def _(self, node: resolved.ResolvedGenericParameter):
+        param = self.context.cache(node)
+        assert isinstance(param, GenericParameter)
+        return [
+            vm.LoadObject(param)
+        ]
+
+
 class CompilerDispatcher(StatefulProcessor):
     _compilers: dict[type, CompilerBase]
 
@@ -1135,6 +1174,8 @@ class NodeCompiler(StatefulProcessor):
     _function_compiler: FunctionCompiler
     _module_compiler: ModuleCompiler
 
+    _generic_context_compiler: GenericContextCompiler
+
     _pattern_constructor: PatternConstructor
 
     _debug_context: DebugContext
@@ -1153,6 +1194,8 @@ class NodeCompiler(StatefulProcessor):
         self._class_compiler = ClassCompiler(self)
         self._function_compiler = FunctionCompiler(self)
         self._module_compiler = ModuleCompiler(self)
+
+        self._generic_context_compiler = GenericContextCompiler(self)
 
         self._pattern_constructor = PatternConstructor(self)
 
@@ -1203,6 +1246,10 @@ class NodeCompiler(StatefulProcessor):
     @property
     def module_compiler(self):
         return self._module_compiler
+
+    @property
+    def generic_context_compiler(self):
+        return self._generic_context_compiler
 
     @property
     def pattern_constructor(self):

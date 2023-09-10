@@ -82,10 +82,13 @@ class ResolvedBreak(ResolvedStatement[Break]):
 class ResolvedClass(ResolvedExpression[Class]):
     bases: list[ResolvedExpression]
 
+    generic: list["ResolvedGenericParameter"] | None
+
     items: list[ResolvedNode]
 
     def _init(self):
         self.bases = []
+        self.generic = None
         self.items = []
 
     @property

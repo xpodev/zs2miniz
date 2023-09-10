@@ -134,9 +134,20 @@ class NodeRegistry(_SubProcessor):
         for base in node.bases:
             result.bases.append(self.register(base))
 
-        with self.context.create_scope(result):
-            for item in node.items:
-                result.items.append(self.register(item))
+        signature = resolved.ResolvedNode(None)
+        result.signature = signature
+        with self.context.create_scope(signature):
+            if node.generic:
+                result.generic = []
+                for generic in node.generic:
+                    parameter = resolved.ResolvedGenericParameter(generic)
+                    self.context.current_scope.create_name(parameter.name, parameter)
+                    result.generic.append(parameter)
+
+            with self.context.create_scope(result):
+
+                for item in node.items:
+                    result.items.append(self.register(item))
 
         return result
 
@@ -404,8 +415,10 @@ class NodeResolver(_SubProcessor):
 
     @_res
     def _(self, node: resolved.ResolvedClass):
-        with self.context.use_scope(node):
+        with self.context.use_scope(node.signature):
             node.bases = list(map(self.resolve, node.bases))
+
+        with self.context.use_scope(node):
             node.items = list(map(self.resolve, node.items))
 
     @_res

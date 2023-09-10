@@ -105,6 +105,8 @@ class Class(Node[token_info.Class]):  # todo
 
     name: Optional["Identifier"]
 
+    generic: list["Identifier"] | None
+
     bases: list[Expression]
 
     items: list[Node]
@@ -113,6 +115,7 @@ class Class(Node[token_info.Class]):  # todo
             self,
             _class: Token,
             name: Optional["Identifier"],
+            generic: list["Identifier"] | None,
             _colon: Token | None,
             bases: list[Expression],
             _left_bracket: Token,
@@ -121,6 +124,7 @@ class Class(Node[token_info.Class]):  # todo
     ):
         super().__init__(token_info.Class(_class, _colon, _left_bracket, _right_bracket))
         self.name = name
+        self.generic = generic
         self.bases = bases
         self.items = items
 
